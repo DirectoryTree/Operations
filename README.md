@@ -36,11 +36,10 @@ php artisan operations:run
 
 ## Installation
 
-The package is under development and has no tagged release yet. To try the current `master` branch, add the GitHub repository to your application's Composer configuration:
+Install the package with Composer:
 
 ```bash
-composer config repositories.operations vcs https://github.com/DirectoryTree/Operations
-composer require directorytree/operations:dev-master
+composer require directorytree/operations
 ```
 
 Publish and run the migration:
