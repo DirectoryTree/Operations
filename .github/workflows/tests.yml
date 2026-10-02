@@ -1,0 +1,45 @@
+name: Tests
+
+on: [push, pull_request]
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - php: '8.2'
+            laravel: '12.*'
+            testbench: '10.*'
+            pest: '3.*'
+          - php: '8.4'
+            laravel: '12.*'
+            testbench: '10.*'
+            pest: '4.*'
+          - php: '8.3'
+            laravel: '13.*'
+            testbench: '11.*'
+            pest: '4.*'
+          - php: '8.4'
+            laravel: '13.*'
+            testbench: '11.*'
+            pest: '4.*'
+
+    name: PHP ${{ matrix.php }} / Laravel ${{ matrix.laravel }}
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php }}
+          extensions: mbstring, pdo_sqlite
+          coverage: none
+      - run: composer require --dev "laravel/framework:${{ matrix.laravel }}" "orchestra/testbench:${{ matrix.testbench }}" "pestphp/pest:${{ matrix.pest }}" "pestphp/pest-plugin-laravel:${{ matrix.pest }}" --no-interaction --no-update
+      - run: composer update --prefer-dist --no-interaction
+      - run: composer test
+      - run: composer lint
