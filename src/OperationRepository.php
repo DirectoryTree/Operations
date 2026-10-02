@@ -29,6 +29,14 @@ class OperationRepository
     }
 
     /**
+     * Delete the completion record for the given operation.
+     */
+    public function forget(string $name): bool
+    {
+        return $this->connection->table('operations')->where('name', $name)->delete() > 0;
+    }
+
+    /**
      * Execute an operation and record its successful completion.
      */
     public function run(string $name, Operation $operation, Command $command): void

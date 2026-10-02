@@ -91,7 +91,7 @@ php artisan operations:run
 
 The runner stops when an operation throws an exception. The command fails, the operation stays pending, and later operations are not executed. Running the command again retries unfinished work and skips anything already completed.
 
-The filename without `.php` is the operation's identity. Keep completed filenames unchanged and create another operation when you need a correction. There is no rollback or rerun command.
+The filename without `.php` is the operation's identity. Keep completed filenames unchanged and create another operation when you need a correction. Operations do not support rollbacks.
 
 ### Checking Status
 
@@ -162,6 +162,24 @@ The command's normal verbosity options apply, including `--quiet` and `--verbose
 Write operations so they can safely run again after a partial failure. For example, update rows that still need changing instead of incrementing every row unconditionally.
 
 An operation can finish its work and then lose its database connection before recording completion. The next run will attempt it again. The ledger prevents repeating recorded successes; it cannot guarantee exactly-once execution of arbitrary side effects.
+
+### Forgetting Operations
+
+To deliberately run a completed operation again, forget its completion record using the full filename without `.php`:
+
+```bash
+php artisan operations:forget 2026_10_02_120000_backfill_company_names
+```
+
+The command asks for confirmation. Use `--force` to skip the prompt:
+
+```bash
+php artisan operations:forget 2026_10_02_120000_backfill_company_names --force
+```
+
+Forgetting only deletes the completion record. It does not undo previous effects, delete the file, or execute the operation. If the file is present, the next `operations:run` will execute it again. Make sure it is safe to repeat.
+
+You can also forget records whose files have been removed. The command fails if no completion record matches the supplied name. Failed operations do not need to be forgotten; they are already pending.
 
 ### Transactions
 

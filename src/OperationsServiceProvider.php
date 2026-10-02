@@ -2,6 +2,7 @@
 
 namespace DirectoryTree\Operations;
 
+use DirectoryTree\Operations\Commands\ForgetCommand;
 use DirectoryTree\Operations\Commands\MakeCommand;
 use DirectoryTree\Operations\Commands\RunCommand;
 use DirectoryTree\Operations\Commands\StatusCommand;
@@ -27,7 +28,12 @@ class OperationsServiceProvider extends ServiceProvider
     public function boot(): void
     {
         if ($this->app->runningInConsole()) {
-            $this->commands([MakeCommand::class, RunCommand::class, StatusCommand::class]);
+            $this->commands([
+                RunCommand::class,
+                MakeCommand::class,
+                StatusCommand::class,
+                ForgetCommand::class,
+            ]);
 
             $this->publishes([
                 __DIR__.'/../config/operations.php' => config_path('operations.php'),
