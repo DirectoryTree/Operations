@@ -33,7 +33,9 @@ class OperationRepository
      */
     public function forget(string $name): bool
     {
-        return $this->connection->table('operations')->where('name', $name)->delete() > 0;
+        return $this->connection->table('operations')
+            ->where('name', $name)
+            ->delete() > 0;
     }
 
     /**
