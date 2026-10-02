@@ -50,7 +50,7 @@ php artisan vendor:publish --tag=operations-migrations
 php artisan migrate
 ```
 
-The service provider is discovered automatically. Laravel updates the published migration's timestamp when `database.migrations.update_date_on_publish` is enabled. Publish this migration once during setup and commit it with your application.
+The service provider is registered automatically.
 
 ## Usage
 
@@ -82,8 +82,6 @@ return new class extends Operation
 };
 ```
 
-Use operations for one-time data changes, backfills, and deployment tasks. Keep repeatable application setup in your seeders.
-
 ### Running Operations
 
 Run all pending operations in filename order:
@@ -93,8 +91,6 @@ php artisan operations:run
 ```
 
 The runner stops when an operation throws an exception. The command fails, the operation stays pending, and later operations are not executed. Running the command again retries unfinished work and skips anything already completed.
-
-Filename order determines execution order among the operations currently pending. Adding a file with an earlier timestamp does not undo or reorder work that already completed.
 
 The filename without `.php` is the operation's identity. Keep completed filenames unchanged and create another operation when you need a correction. There is no rollback or rerun command.
 
@@ -160,9 +156,7 @@ In an interactive terminal, the progress bar updates in place. The capture above
 
 The runner prints a `RUNNING` line before each operation and a `DONE` line with elapsed time after recording completion. Your operation's output appears between them. Finish any progress bars you create before returning from `handle()`.
 
-The command's normal verbosity options apply, including `--quiet` and `--verbose`. Operations should run unattended during deployment, so avoid requiring interactive answers.
-
-When calling an operation or `Runner::run()` directly, pass an initialized Artisan command as the first argument.
+The command's normal verbosity options apply, including `--quiet` and `--verbose`.
 
 ### Retrying Operations
 
@@ -203,7 +197,7 @@ public function handle(Command $command): void
 }
 ```
 
-Here, completing the operation means the dispatch finished. It does not mean the search index has been rebuilt. Laravel's queue owns job execution and retries. Keep dependent deployment steps separate until that background work completes, and make dispatching operations safe to retry after partial dispatch.
+The operation is marked complete after dispatching the job. Laravel's queue handles the job's execution and retries; the operation does not wait for it to finish.
 
 If you enable a transaction, use Laravel's after-commit dispatch behavior for jobs that must see committed changes. Database completion and publishing to an external queue are not one atomic transaction.
 
@@ -217,7 +211,7 @@ Pruning is a manual step. A fresh database cannot execute a deleted operation, s
 
 ## Deployment
 
-Add the runner after your schema migrations in the appropriate deployment stage:
+Run operations after your migrations:
 
 ```bash
 set -e
@@ -242,19 +236,13 @@ Laravel acquires a lock through the application's default cache store before run
 php artisan operations:run --force --isolated=1
 ```
 
-Every deployment invocation must opt into isolation. A command without `--isolated`, or a direct call to `Runner::run()`, does not acquire or respect the command lock.
+Every invocation must use `--isolated` to participate in locking.
 
-All deployment hosts targeting the same ledger must share the default cache store and cache prefix. Use a shared Redis or database cache store in production. An array store or a local file cache does not coordinate separate hosts. Independent applications sharing a cache should use different cache prefixes.
+All servers must share the same default cache store and cache prefix for isolation to work across servers.
 
-Laravel's default command lock expires after one hour and is not automatically renewed. Keep the deployment process's maximum runtime below that expiry; longer runs need a customized command with Laravel's `isolationLockExpiresAt()` hook. If a run outlives its lock, another invocation can start and repeat side effects. Do not clear the shared cache while operations are running.
+Laravel's default isolation lock expires after one hour and is not renewed automatically. Operations that run longer may overlap with another invocation.
 
-Migration and operation commands use separate locks. Isolation does not coordinate the entire deployment or wait for another deployment's migrations to finish.
-
-### Existing Applications
-
-Start with new deployment tasks. Moving historical seeders into `operations` makes them pending on every database without a matching completion record. Review existing tasks individually before migrating them.
-
-Run operations from the deployment runtime that owns the work, after its schema and required dependencies are available. For long backfills, keep the application compatible with both old and new data until the work finishes.
+Migration and operation commands use separate locks; isolation applies only to the command being run.
 
 ## Configuration
 
@@ -270,18 +258,4 @@ return [
 ];
 ```
 
-`connection` selects the database connection for the ledger, its migration, and optional transactions. `null` uses the application's default connection. Configure it before migrating and keep it stable across releases. It does not change the connection used by your application models.
-
-## Development
-
-```bash
-composer install
-composer test
-composer lint
-```
-
-The test suite uses Pest, Orchestra Testbench, and SQLite. It does not need your application's database.
-
-## License
-
-Operations is open-source software licensed under the [MIT license](LICENSE.md).
+`connection` selects the database connection for the operations table and optional transactions. `null` uses the application's default connection. It does not change the connection used by your application models.
