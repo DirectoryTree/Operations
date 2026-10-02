@@ -4,6 +4,8 @@
 
 <p align="center">
 <a href="https://github.com/DirectoryTree/Operations/actions"><img src="https://img.shields.io/github/actions/workflow/status/DirectoryTree/Operations/tests.yml?branch=master&style=flat-square" alt="Tests"></a>
+<a href="https://packagist.org/packages/directorytree/operations"><img src="https://img.shields.io/packagist/dt/directorytree/operations.svg?style=flat-square" alt="Total Downloads"></a>
+<a href="https://packagist.org/packages/directorytree/operations"><img src="https://img.shields.io/packagist/v/directorytree/operations.svg?style=flat-square" alt="Latest Version"></a>
 <a href="https://github.com/DirectoryTree/Operations/blob/master/LICENSE.md"><img src="https://img.shields.io/github/license/DirectoryTree/Operations?style=flat-square" alt="License"></a>
 </p>
 
