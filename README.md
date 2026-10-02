@@ -111,16 +111,19 @@ View pending and completed operations, including completion timestamps and wheth
 Every operation receives the running Artisan command as a required `Command $command` argument to `handle()`. Use it to print messages, render tables, and display progress:
 
 ```php
+use App\Models\Company;
 use Illuminate\Console\Command;
 
 public function handle(Command $command): void
 {
     $command->info('Backfilling company names...');
 
-    $output = $command->getOutput();
-    $output->progressStart();
+    $companies = Company::query()->whereNull('display_name');
 
-    Company::query()->whereNull('display_name')->chunkById(500, function ($companies) use ($output) {
+    $output = $command->getOutput();
+    $output->progressStart($companies->count());
+
+    $companies->chunkById(500, function ($companies) use ($output) {
         foreach ($companies as $company) {
             $company->update(['display_name' => $company->name]);
         }
@@ -133,6 +136,27 @@ public function handle(Command $command): void
     $command->info('Company names updated.');
 }
 ```
+
+Running this example against 1,500 companies produces the following output:
+
+```text
+$ php artisan operations:run
+
+  2026_10_02_120000_backfill_company_names ............................................... RUNNING
+
+Backfilling company names...
+    0/1500 [░░░░░░░░░░░░░░░░░░░░░░░░░░░░]   0%
+ 1000/1500 [▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓░░░░░░░░░░]  66%
+ 1500/1500 [▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓] 100%
+
+Company names updated.
+
+  2026_10_02_120000_backfill_company_names ............................................ 0.10s DONE
+
+   INFO  Completed 1 operation(s).
+```
+
+In an interactive terminal, the progress bar updates in place. The capture above shows its successive updates; timings and intermediate counts vary with the work being performed.
 
 The runner prints a `RUNNING` line before each operation and a `DONE` line with elapsed time after recording completion. Your operation's output appears between them. Finish any progress bars you create before returning from `handle()`.
 
