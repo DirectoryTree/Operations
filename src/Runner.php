@@ -5,6 +5,7 @@ namespace DirectoryTree\Operations;
 use Closure;
 use Illuminate\Console\Command;
 use Illuminate\Filesystem\Filesystem;
+use InvalidArgumentException;
 use UnexpectedValueException;
 
 class Runner
@@ -41,12 +42,13 @@ class Runner
      * @param  (Closure(string): void)|null  $before
      * @param  (Closure(string, float): void)|null  $after
      */
-    public function run(Command $command, ?Closure $before = null, ?Closure $after = null): int
+    public function run(Command $command, ?Closure $before = null, ?Closure $after = null, ?string $operation = null): int
     {
+        $files = $operation === null ? $this->files() : $this->find($operation);
         $completed = $this->repository->completed();
         $count = 0;
 
-        foreach ($this->files() as $name => $path) {
+        foreach ($files as $name => $path) {
             if ($completed->has($name)) {
                 continue;
             }
@@ -69,5 +71,25 @@ class Runner
         }
 
         return $count;
+    }
+
+    /**
+     * Find an operation by its exact filename without the extension.
+     *
+     * @return array<string, string>
+     */
+    protected function find(string $name): array
+    {
+        if (! preg_match('/\A[a-zA-Z0-9_-]+\z/', $name)) {
+            throw new InvalidArgumentException('Use an exact operation filename without .php, containing only letters, numbers, underscores, and hyphens.');
+        }
+
+        $files = $this->files();
+
+        if (! isset($files[$name])) {
+            throw new InvalidArgumentException("Operation [{$name}] not found. Use its exact filename without .php.");
+        }
+
+        return [$name => $files[$name]];
     }
 }

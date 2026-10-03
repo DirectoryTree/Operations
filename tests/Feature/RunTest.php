@@ -84,7 +84,7 @@ test('a failed operation stops the run and the next run resumes without repeatin
     ])->and(DB::table('operations')->count())->toBe(3);
 });
 
-test('a transaction rolls back database changes when an operation fails', function () {
+test('a transaction rolls back database changes when an operation fails', function (?string $operation) {
     Schema::create('examples', function (Blueprint $table) {
         $table->id();
     });
@@ -103,13 +103,13 @@ test('a transaction rolls back database changes when an operation fails', functi
     };
     PHP);
 
-    expect(fn () => app(Runner::class)->run(app(RunCommand::class)))->toThrow(RuntimeException::class, 'Backfill failed.');
+    expect(fn () => Artisan::call('operations:run', ['operation' => $operation]))->toThrow(RuntimeException::class, 'Backfill failed.');
 
     expect(DB::table('examples')->count())->toBe(0)
         ->and(DB::table('operations')->count())->toBe(0);
-});
+})->with([null, '2026_10_02_120000_backfill']);
 
-test('a transaction rolls back the operation if recording completion fails', function () {
+test('a transaction rolls back the operation if recording completion fails', function (?string $operation) {
     Schema::create('examples', function (Blueprint $table) {
         $table->id();
     });
@@ -130,11 +130,11 @@ test('a transaction rolls back the operation if recording completion fails', fun
     };
     PHP);
 
-    expect(fn () => app(Runner::class)->run(app(RunCommand::class)))->toThrow(QueryException::class);
+    expect(fn () => Artisan::call('operations:run', ['operation' => $operation]))->toThrow(QueryException::class);
 
     expect(DB::table('examples')->count())->toBe(0)
         ->and(DB::table('operations')->count())->toBe(0);
-});
+})->with([null, '2026_10_02_120000_backfill']);
 
 test('operations can dispatch jobs without becoming queued operations themselves', function () {
     Bus::fake();
@@ -159,14 +159,14 @@ test('operations can dispatch jobs without becoming queued operations themselves
     expect(DB::table('operations')->count())->toBe(1);
 });
 
-test('completed operation files are not loaded on subsequent runs', function () {
+test('completed operation files are not loaded on subsequent runs', function (?string $operation) {
     File::ensureDirectoryExists(config('operations.path'));
     File::put(config('operations.path').'/2026_10_02_120000_old.php', '<?php throw new \RuntimeException("Obsolete dependency.");');
 
     DB::table('operations')->insert(['name' => '2026_10_02_120000_old', 'completed_at' => now()]);
 
-    artisan('operations:run')->expectsOutputToContain('No pending operations.')->assertSuccessful();
-});
+    artisan('operations:run', ['operation' => $operation])->expectsOutputToContain('No pending operations.')->assertSuccessful();
+})->with([null, '2026_10_02_120000_old']);
 
 test('invalid operation files fail without being recorded', function () {
     File::ensureDirectoryExists(config('operations.path'));
@@ -198,7 +198,7 @@ test('a missing operations directory has no pending work', function () {
     artisan('operations:run')->expectsOutputToContain('No pending operations.')->assertSuccessful();
 });
 
-test('operation exceptions produce a failing console exit code', function () {
+test('operation exceptions produce a failing console exit code', function (?string $operation) {
     File::ensureDirectoryExists(config('operations.path'));
     File::put(config('operations.path').'/2026_10_02_120000_failure.php', <<<'PHP'
     <?php
@@ -215,9 +215,9 @@ test('operation exceptions produce a failing console exit code', function () {
     // Testbench rethrows console exceptions; use Laravel's kernel to verify the exit code.
     $kernel = new Kernel(app(), app('events'));
     $kernel->registerCommand(app(RunCommand::class));
-    $exitCode = $kernel->handle(new ArrayInput(['command' => 'operations:run']), $output);
+    $exitCode = $kernel->handle(new ArrayInput(['command' => 'operations:run', 'operation' => $operation]), $output);
 
     expect($exitCode)->toBe(1)
         ->and($output->fetch())->toContain('Backfill failed.')
         ->and(DB::table('operations')->count())->toBe(0);
-});
+})->with([null, '2026_10_02_120000_failure']);
