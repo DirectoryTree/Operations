@@ -16,14 +16,16 @@ class RunCommand extends Command implements Isolatable
      *
      * @var string
      */
-    protected $signature = 'operations:run {--force : Run operations in production without confirmation}';
+    protected $signature = 'operations:run
+                            {operation? : The exact operation filename without the .php extension}
+                            {--force : Run operations in production without confirmation}';
 
     /**
      * The console command description.
      *
      * @var string
      */
-    protected $description = 'Run all pending deployment operations';
+    protected $description = 'Run pending deployment operations';
 
     /**
      * Execute the console command.
@@ -47,6 +49,7 @@ class RunCommand extends Command implements Isolatable
                 $this->components->twoColumnDetail($name, "<fg=gray>{$duration}s</> <fg=green;options=bold>DONE</>");
                 $this->newLine();
             },
+            operation: $this->argument('operation'),
         );
 
         $this->components->info($count ? "Completed {$count} operation(s)." : 'No pending operations.');

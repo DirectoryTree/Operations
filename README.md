@@ -95,6 +95,42 @@ The runner stops when an operation throws an exception. The command fails, the o
 
 The filename without `.php` is the operation's identity. Keep completed filenames unchanged and create another operation when you need a correction. Operations do not support rollbacks.
 
+To run a single pending operation, pass its exact filename without `.php`:
+
+```bash
+php artisan operations:run 2026_10_03_120000_backfill_company_names
+```
+
+The name must contain only letters, numbers, underscores, and hyphens. Paths, the `.php` extension, and partial names are not accepted. Invalid or unknown names fail without running any operations.
+
+Only the selected operation runs. It uses the same transaction support and completion ledger as a full run, and is skipped if already completed. Its file must still exist, even if it has a completion record.
+
+### Testing Operations
+
+Call the command from a Laravel/Pest feature test to exercise a specific operation:
+
+```php
+use App\Models\Company;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+
+uses(RefreshDatabase::class);
+
+test('company names are backfilled', function () {
+    $company = Company::factory()->create([
+        'name' => 'Acme',
+        'display_name' => null,
+    ]);
+
+    $this->artisan('operations:run', [
+        'operation' => '2026_10_03_120000_backfill_company_names',
+    ])->assertSuccessful();
+
+    expect($company->fresh()->display_name)->toBe('Acme');
+});
+```
+
+Use your application's Laravel test case and a dedicated test database with the published operations migration. `RefreshDatabase` resets the completion ledger between tests; invoking the same operation twice within a test skips it on the second call. If you configure a separate `operations.connection`, point it to a test database and include it in your database reset setup.
+
 ### Checking Status
 
 ```bash
