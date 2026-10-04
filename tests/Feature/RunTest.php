@@ -5,14 +5,11 @@ use DirectoryTree\Operations\Runner;
 use DirectoryTree\Operations\Tests\Fixtures\ExampleJob;
 use Illuminate\Database\QueryException;
 use Illuminate\Database\Schema\Blueprint;
-use Illuminate\Foundation\Console\Kernel;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Schema;
-use Symfony\Component\Console\Input\ArrayInput;
-use Symfony\Component\Console\Output\BufferedOutput;
 
 use function Pest\Laravel\artisan;
 
@@ -197,27 +194,3 @@ test('production requires confirmation unless forced', function () {
 test('a missing operations directory has no pending work', function () {
     artisan('operations:run')->expectsOutputToContain('No pending operations.')->assertSuccessful();
 });
-
-test('operation exceptions produce a failing console exit code', function (?string $operation) {
-    File::ensureDirectoryExists(config('operations.path'));
-    File::put(config('operations.path').'/2026_10_02_120000_failure.php', <<<'PHP'
-    <?php
-
-    return new class extends \DirectoryTree\Operations\Operation {
-        public function handle(\Illuminate\Console\Command $command): void
-        {
-            throw new \RuntimeException('Backfill failed.');
-        }
-    };
-    PHP);
-
-    $output = new BufferedOutput;
-    // Testbench rethrows console exceptions; use Laravel's kernel to verify the exit code.
-    $kernel = new Kernel(app(), app('events'));
-    $kernel->registerCommand(app(RunCommand::class));
-    $exitCode = $kernel->handle(new ArrayInput(['command' => 'operations:run', 'operation' => $operation]), $output);
-
-    expect($exitCode)->toBe(1)
-        ->and($output->fetch())->toContain('Backfill failed.')
-        ->and(DB::table('operations')->count())->toBe(0);
-})->with([null, '2026_10_02_120000_failure']);

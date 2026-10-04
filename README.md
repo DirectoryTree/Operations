@@ -113,6 +113,8 @@ Call the command from a Laravel/Pest feature test to exercise a specific operati
 use App\Models\Company;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 
+use function Pest\Laravel\artisan;
+
 uses(RefreshDatabase::class);
 
 test('company names are backfilled', function () {
@@ -121,7 +123,7 @@ test('company names are backfilled', function () {
         'display_name' => null,
     ]);
 
-    $this->artisan('operations:run', [
+    artisan('operations:run', [
         'operation' => '2026_10_03_120000_backfill_company_names',
     ])->assertSuccessful();
 
@@ -130,6 +132,8 @@ test('company names are backfilled', function () {
 ```
 
 Use your application's Laravel test case and a dedicated test database with the published operations migration. `RefreshDatabase` resets the completion ledger between tests; invoking the same operation twice within a test skips it on the second call. If you configure a separate `operations.connection`, point it to a test database and include it in your database reset setup.
+
+To test whether an operation can safely resume after partial work, create that partial state without a completion record, run the operation, and assert the expected result. Running a completed operation again only verifies that it is skipped.
 
 ### Checking Status
 
