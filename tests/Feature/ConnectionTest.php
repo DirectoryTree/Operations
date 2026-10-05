@@ -21,13 +21,10 @@ test('the migration and runner use the configured ledger connection', function (
     $migration->up();
 
     File::ensureDirectoryExists(config('operations.path'));
-    File::put(config('operations.path').'/2026_10_02_120000_example.php', <<<'PHP'
-    <?php
-
-    return new class extends \DirectoryTree\Operations\Operation {
-        public function handle(\Illuminate\Console\Command $command): void {}
-    };
-    PHP);
+    File::copy(
+        __DIR__.'/../Fixtures/operations/empty_operation.php',
+        config('operations.path').'/2026_10_02_120000_example.php',
+    );
 
     artisan('operations:run')->assertSuccessful();
     artisan('operations:run')->expectsOutputToContain('No pending operations.')->assertSuccessful();
@@ -49,16 +46,10 @@ test('successful transactional operations commit their changes and completion to
     });
 
     File::ensureDirectoryExists(config('operations.path'));
-    File::put(config('operations.path').'/2026_10_02_120000_backfill.php', <<<'PHP'
-    <?php
-
-    return new class extends \DirectoryTree\Operations\Operation implements \DirectoryTree\Operations\Contracts\WithinTransaction {
-        public function handle(\Illuminate\Console\Command $command): void
-        {
-            \Illuminate\Support\Facades\DB::table('examples')->insert(['id' => 1]);
-        }
-    };
-    PHP);
+    File::copy(
+        __DIR__.'/../Fixtures/operations/successful_transaction.php',
+        config('operations.path').'/2026_10_02_120000_backfill.php',
+    );
 
     artisan('operations:run')->assertSuccessful();
 
@@ -88,16 +79,10 @@ test('completion history is read from the writer when the connection has a read 
     $migration = File::getRequire(__DIR__.'/../../database/migrations/2026_10_02_165413_create_operations_table.php');
     $migration->up();
 
-    File::put(config('operations.path').'/2026_10_02_120000_example.php', <<<'PHP'
-    <?php
-
-    return new class extends \DirectoryTree\Operations\Operation {
-        public function handle(\Illuminate\Console\Command $command): void
-        {
-            app('executed')->push('example');
-        }
-    };
-    PHP);
+    File::copy(
+        __DIR__.'/../Fixtures/operations/record_execution.php',
+        config('operations.path').'/2026_10_02_120000_example.php',
+    );
 
     app()->instance('executed', collect());
 

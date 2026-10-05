@@ -28,16 +28,10 @@ test('standard commands work without the checkpoint table', function (bool $sepa
     $name = '2026_10_05_120000_example';
 
     File::ensureDirectoryExists(config('operations.path'));
-    File::put(config('operations.path')."/{$name}.php", <<<'PHP'
-    <?php
-
-    return new class extends \DirectoryTree\Operations\Operation {
-        public function handle(\Illuminate\Console\Command $command): void
-        {
-            $command->info('Operation executed.');
-        }
-    };
-    PHP);
+    File::copy(
+        __DIR__.'/../Fixtures/operations/successful_operation.php',
+        config('operations.path')."/{$name}.php",
+    );
 
     artisan('operations:run')->expectsOutputToContain('Operation executed.')->assertSuccessful();
     artisan('operations:run')->expectsOutputToContain('No pending operations.')->assertSuccessful();
@@ -64,18 +58,10 @@ test('using checkpoints without their migration raises a database exception', fu
     app()->instance('checkpoint_arguments', $arguments);
 
     File::ensureDirectoryExists(config('operations.path'));
-    File::put(config('operations.path').'/2026_10_05_120000_example.php', <<<'PHP'
-    <?php
-
-    return new class extends \DirectoryTree\Operations\Operation {
-        use \DirectoryTree\Operations\Concerns\HasCheckpoints;
-
-        public function handle(\Illuminate\Console\Command $command): void
-        {
-            $this->checkpoints->{app('checkpoint_method')}(...app('checkpoint_arguments'));
-        }
-    };
-    PHP);
+    File::copy(
+        __DIR__.'/../Fixtures/operations/checkpoint_method.php',
+        config('operations.path').'/2026_10_05_120000_example.php',
+    );
 
     expect(fn () => artisan('operations:run')->run())->toThrow(QueryException::class, 'operation_checkpoints');
 
@@ -103,34 +89,10 @@ test('checkpoints read defaults and persist JSON values while preserving other k
     app()->instance('observed', collect());
 
     File::ensureDirectoryExists(config('operations.path'));
-    File::put(config('operations.path').'/2026_10_05_120000_example.php', <<<'PHP'
-    <?php
-
-    return new class extends \DirectoryTree\Operations\Operation {
-        use \DirectoryTree\Operations\Concerns\HasCheckpoints;
-
-        public function handle(\Illuminate\Console\Command $command): void
-        {
-            app('observed')->push($this->checkpoints->get('missing'));
-            app('observed')->push($this->checkpoints->get('missing', 42));
-
-            if (app('multiple')) {
-                $this->checkpoints->put(app('checkpoint_values'));
-            } else {
-                foreach (app('checkpoint_values') as $key => $value) {
-                    $this->checkpoints->put($key, $value);
-                }
-            }
-
-            $this->checkpoints->put('cursor', 'last-page');
-            $this->checkpoints->put([]);
-
-            foreach (app('checkpoint_values') as $key => $value) {
-                app('observed')->push($this->checkpoints->get($key, 'missing'));
-            }
-        }
-    };
-    PHP);
+    File::copy(
+        __DIR__.'/../Fixtures/operations/checkpoint_values.php',
+        config('operations.path').'/2026_10_05_120000_example.php',
+    );
 
     artisan('operations:run')->assertSuccessful();
 
@@ -149,25 +111,10 @@ test('a failed operation resumes from its saved checkpoint on the next run', fun
     app()->instance('should_fail', true);
 
     File::ensureDirectoryExists(config('operations.path'));
-    File::put(config('operations.path').'/2026_10_05_120000_backfill.php', <<<'PHP'
-    <?php
-
-    return new class extends \DirectoryTree\Operations\Operation {
-        use \DirectoryTree\Operations\Concerns\HasCheckpoints;
-
-        public function handle(\Illuminate\Console\Command $command): void
-        {
-            for ($id = $this->checkpoints->get('last_id', 0) + 1; $id <= 3; $id++) {
-                if ($id === 3 && app('should_fail')) {
-                    throw new \RuntimeException('Backfill interrupted.');
-                }
-
-                \Illuminate\Support\Facades\DB::table('examples')->insert(['id' => $id]);
-                $this->checkpoints->put('last_id', $id);
-            }
-        }
-    };
-    PHP);
+    File::copy(
+        __DIR__.'/../Fixtures/operations/resumable_backfill.php',
+        config('operations.path').'/2026_10_05_120000_backfill.php',
+    );
 
     expect(fn () => artisan('operations:run')->run())->toThrow(RuntimeException::class, 'Backfill interrupted.');
 
@@ -191,20 +138,10 @@ test('checkpoint keys are scoped to the operation filename', function () {
     File::ensureDirectoryExists(config('operations.path'));
 
     foreach (['2026_10_05_120000_first', '2026_10_05_120001_second'] as $name) {
-        File::put(config('operations.path')."/{$name}.php", <<<'PHP'
-        <?php
-
-        return new class extends \DirectoryTree\Operations\Operation {
-            use \DirectoryTree\Operations\Concerns\HasCheckpoints;
-
-            public function handle(\Illuminate\Console\Command $command): void
-            {
-                app('observed')->push($this->checkpoints->get('cursor'));
-                $this->checkpoints->put('cursor', basename(__FILE__, '.php'));
-                app('observed')->push($this->checkpoints->get('cursor'));
-            }
-        };
-        PHP);
+        File::copy(
+            __DIR__.'/../Fixtures/operations/scoped_checkpoints.php',
+            config('operations.path')."/{$name}.php",
+        );
     }
 
     artisan('operations:run')->assertSuccessful();
@@ -221,27 +158,10 @@ test('a failed chunk rolls back its work and checkpoint without losing earlier p
     });
 
     File::ensureDirectoryExists(config('operations.path'));
-    File::put(config('operations.path').'/2026_10_05_120000_backfill.php', <<<'PHP'
-    <?php
-
-    return new class extends \DirectoryTree\Operations\Operation {
-        use \DirectoryTree\Operations\Concerns\HasCheckpoints;
-
-        public function handle(\Illuminate\Console\Command $command): void
-        {
-            foreach ([1, 2] as $id) {
-                \Illuminate\Support\Facades\DB::transaction(function () use ($id) {
-                    \Illuminate\Support\Facades\DB::table('examples')->insert(['id' => $id]);
-                    $this->checkpoints->put('last_id', $id);
-
-                    if ($id === 2) {
-                        throw new \RuntimeException('Chunk failed.');
-                    }
-                });
-            }
-        }
-    };
-    PHP);
+    File::copy(
+        __DIR__.'/../Fixtures/operations/failing_checkpoint_chunk.php',
+        config('operations.path').'/2026_10_05_120000_backfill.php',
+    );
 
     expect(fn () => artisan('operations:run')->run())->toThrow(RuntimeException::class, 'Chunk failed.');
 
@@ -260,20 +180,10 @@ test('checkpoints participate in the whole operation transaction', function () {
     ]);
 
     File::ensureDirectoryExists(config('operations.path'));
-    File::put(config('operations.path')."/{$name}.php", <<<'PHP'
-    <?php
-
-    return new class extends \DirectoryTree\Operations\Operation implements \DirectoryTree\Operations\Contracts\WithinTransaction {
-        use \DirectoryTree\Operations\Concerns\HasCheckpoints;
-
-        public function handle(\Illuminate\Console\Command $command): void
-        {
-            $this->checkpoints->put(['last_id' => 20, 'finished' => true]);
-
-            throw new \RuntimeException('Backfill failed.');
-        }
-    };
-    PHP);
+    File::copy(
+        __DIR__.'/../Fixtures/operations/failing_checkpoint_transaction.php',
+        config('operations.path')."/{$name}.php",
+    );
 
     expect(fn () => artisan('operations:run')->run())->toThrow(RuntimeException::class, 'Backfill failed.');
 
@@ -284,19 +194,10 @@ test('checkpoints participate in the whole operation transaction', function () {
 
 test('invalid JSON values fail before any checkpoints are changed', function () {
     File::ensureDirectoryExists(config('operations.path'));
-    File::put(config('operations.path').'/2026_10_05_120000_example.php', <<<'PHP'
-    <?php
-
-    return new class extends \DirectoryTree\Operations\Operation {
-        use \DirectoryTree\Operations\Concerns\HasCheckpoints;
-
-        public function handle(\Illuminate\Console\Command $command): void
-        {
-            $this->checkpoints->put('last_id', 10);
-            $this->checkpoints->put(['last_id' => 20, 'invalid' => NAN]);
-        }
-    };
-    PHP);
+    File::copy(
+        __DIR__.'/../Fixtures/operations/invalid_checkpoint_value.php',
+        config('operations.path').'/2026_10_05_120000_example.php',
+    );
 
     expect(fn () => artisan('operations:run')->run())->toThrow(JsonException::class);
 
@@ -329,20 +230,10 @@ test('checkpoints use the configured connection and read from its writer', funct
 
     app()->instance('observed', collect());
 
-    File::put(config('operations.path').'/2026_10_05_120000_example.php', <<<'PHP'
-    <?php
-
-    return new class extends \DirectoryTree\Operations\Operation {
-        use \DirectoryTree\Operations\Concerns\HasCheckpoints;
-
-        public function handle(\Illuminate\Console\Command $command): void
-        {
-            app('observed')->push($this->checkpoints->get('cursor', 'initial'));
-            $this->checkpoints->put('cursor', 'next-page');
-            app('observed')->push($this->checkpoints->get('cursor'));
-        }
-    };
-    PHP);
+    File::copy(
+        __DIR__.'/../Fixtures/operations/checkpoint_connection.php',
+        config('operations.path').'/2026_10_05_120000_example.php',
+    );
 
     artisan('operations:run')->assertSuccessful();
 

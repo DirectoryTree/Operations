@@ -9,11 +9,10 @@ use function Pest\Laravel\artisan;
 
 test('isolated invocations skip pending operations when another command holds the lock', function (bool|string $isolated, int $exitCode) {
     File::ensureDirectoryExists(config('operations.path'));
-    File::put(config('operations.path').'/2026_10_02_120000_backfill.php', <<<'PHP'
-    <?php
-
-    throw new \RuntimeException('The operation file must not be loaded.');
-    PHP);
+    File::copy(
+        __DIR__.'/../Fixtures/operations/throw_on_load.php',
+        config('operations.path').'/2026_10_02_120000_backfill.php',
+    );
 
     $mutex = app(CacheCommandMutex::class);
     $command = app(RunCommand::class);
@@ -36,13 +35,10 @@ test('isolated invocations skip pending operations when another command holds th
 
 test('command isolation is opt in', function () {
     File::ensureDirectoryExists(config('operations.path'));
-    File::put(config('operations.path').'/2026_10_02_120000_backfill.php', <<<'PHP'
-    <?php
-
-    return new class extends \DirectoryTree\Operations\Operation {
-        public function handle(\Illuminate\Console\Command $command): void {}
-    };
-    PHP);
+    File::copy(
+        __DIR__.'/../Fixtures/operations/empty_operation.php',
+        config('operations.path').'/2026_10_02_120000_backfill.php',
+    );
 
     $mutex = app(CacheCommandMutex::class);
     $command = app(RunCommand::class);
@@ -62,13 +58,10 @@ test('command isolation is opt in', function () {
 
 test('successful isolated runs release the lock for subsequent invocations', function () {
     File::ensureDirectoryExists(config('operations.path'));
-    File::put(config('operations.path').'/2026_10_02_120000_backfill.php', <<<'PHP'
-    <?php
-
-    return new class extends \DirectoryTree\Operations\Operation {
-        public function handle(\Illuminate\Console\Command $command): void {}
-    };
-    PHP);
+    File::copy(
+        __DIR__.'/../Fixtures/operations/empty_operation.php',
+        config('operations.path').'/2026_10_02_120000_backfill.php',
+    );
 
     artisan('operations:run', ['--isolated' => true])
         ->expectsOutputToContain('Completed 1 operation(s).')

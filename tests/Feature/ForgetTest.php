@@ -18,7 +18,10 @@ test('forgetting deletes only the requested completion record without loading or
 
     File::ensureDirectoryExists(config('operations.path'));
     $path = config('operations.path')."/{$name}.php";
-    File::put($path, '<?php throw new \RuntimeException("The operation must not be loaded.");');
+    File::copy(
+        __DIR__.'/../Fixtures/operations/throw_on_load.php',
+        $path,
+    );
 
     artisan('operations:forget', ['name' => $name])
         ->expectsOutputToContain('Forgetting does not undo previous effects.')
@@ -27,23 +30,17 @@ test('forgetting deletes only the requested completion record without loading or
         ->assertSuccessful();
 
     expect(DB::table('operations')->pluck('name')->all())->toBe([$other])
-        ->and(File::get($path))->toBe('<?php throw new \RuntimeException("The operation must not be loaded.");');
+        ->and(File::get($path))->toBe(File::get(__DIR__.'/../Fixtures/operations/throw_on_load.php'));
 });
 
 test('a forgotten operation runs again only when the runner is invoked', function () {
     $name = '2026_10_02_120000_example';
 
     File::ensureDirectoryExists(config('operations.path'));
-    File::put(config('operations.path')."/{$name}.php", <<<'PHP'
-    <?php
-
-    return new class extends \DirectoryTree\Operations\Operation {
-        public function handle(\Illuminate\Console\Command $command): void
-        {
-            app('executed')->push('example');
-        }
-    };
-    PHP);
+    File::copy(
+        __DIR__.'/../Fixtures/operations/record_execution.php',
+        config('operations.path')."/{$name}.php",
+    );
 
     app()->instance('executed', collect());
 
@@ -167,18 +164,10 @@ test('forgetting clears checkpoints for completed and unfinished operations', fu
     app()->instance('observed', collect());
 
     File::ensureDirectoryExists(config('operations.path'));
-    File::put(config('operations.path')."/{$name}.php", <<<'PHP'
-    <?php
-
-    return new class extends \DirectoryTree\Operations\Operation {
-        use \DirectoryTree\Operations\Concerns\HasCheckpoints;
-
-        public function handle(\Illuminate\Console\Command $command): void
-        {
-            app('observed')->push($this->checkpoints->get('last_id', 0));
-        }
-    };
-    PHP);
+    File::copy(
+        __DIR__.'/../Fixtures/operations/read_checkpoint.php',
+        config('operations.path')."/{$name}.php",
+    );
 
     artisan('operations:forget', ['name' => $name, '--force' => true])->assertSuccessful();
 

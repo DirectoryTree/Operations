@@ -17,17 +17,10 @@ test('operations run in filename order and only once after completion', function
     File::ensureDirectoryExists(config('operations.path'));
 
     foreach (['2026_10_02_120002_second', '2026_10_02_120001_first'] as $name) {
-        File::put(config('operations.path')."/{$name}.php", <<<'PHP'
-        <?php
-
-        return new class extends \DirectoryTree\Operations\Operation {
-            public function handle(\Illuminate\Console\Command $command): void
-            {
-                app('executed')->push(basename(__FILE__, '.php'));
-                app('ledger_counts')->push(\Illuminate\Support\Facades\DB::table('operations')->count());
-            }
-        };
-        PHP);
+        File::copy(
+            __DIR__.'/../Fixtures/operations/record_execution_order.php',
+            config('operations.path')."/{$name}.php",
+        );
     }
 
     app()->instance('executed', collect());
@@ -45,21 +38,10 @@ test('a failed operation stops the run and the next run resumes without repeatin
     File::ensureDirectoryExists(config('operations.path'));
 
     foreach (['2026_10_02_120001_first', '2026_10_02_120002_second', '2026_10_02_120003_third'] as $name) {
-        File::put(config('operations.path')."/{$name}.php", <<<'PHP'
-        <?php
-
-        return new class extends \DirectoryTree\Operations\Operation {
-            public function handle(\Illuminate\Console\Command $command): void
-            {
-                $name = basename(__FILE__, '.php');
-                app('attempts')->push($name);
-
-                if (str_ends_with($name, 'second') && app('should_fail')) {
-                    throw new \RuntimeException('Backfill failed.');
-                }
-            }
-        };
-        PHP);
+        File::copy(
+            __DIR__.'/../Fixtures/operations/resumable_operations.php',
+            config('operations.path')."/{$name}.php",
+        );
     }
 
     app()->instance('attempts', collect());
@@ -87,18 +69,10 @@ test('a transaction rolls back database changes when an operation fails', functi
     });
 
     File::ensureDirectoryExists(config('operations.path'));
-    File::put(config('operations.path').'/2026_10_02_120000_backfill.php', <<<'PHP'
-    <?php
-
-    return new class extends \DirectoryTree\Operations\Operation implements \DirectoryTree\Operations\Contracts\WithinTransaction {
-        public function handle(\Illuminate\Console\Command $command): void
-        {
-            \Illuminate\Support\Facades\DB::table('examples')->insert(['id' => 1]);
-
-            throw new \RuntimeException('Backfill failed.');
-        }
-    };
-    PHP);
+    File::copy(
+        __DIR__.'/../Fixtures/operations/failing_transaction.php',
+        config('operations.path').'/2026_10_02_120000_backfill.php',
+    );
 
     expect(fn () => Artisan::call('operations:run', ['operation' => $operation]))->toThrow(RuntimeException::class, 'Backfill failed.');
 
@@ -112,20 +86,10 @@ test('a transaction rolls back the operation if recording completion fails', fun
     });
 
     File::ensureDirectoryExists(config('operations.path'));
-    File::put(config('operations.path').'/2026_10_02_120000_backfill.php', <<<'PHP'
-    <?php
-
-    return new class extends \DirectoryTree\Operations\Operation implements \DirectoryTree\Operations\Contracts\WithinTransaction {
-        public function handle(\Illuminate\Console\Command $command): void
-        {
-            \Illuminate\Support\Facades\DB::table('examples')->insert(['id' => 1]);
-            \Illuminate\Support\Facades\DB::table('operations')->insert([
-                'name' => basename(__FILE__, '.php'),
-                'completed_at' => now(),
-            ]);
-        }
-    };
-    PHP);
+    File::copy(
+        __DIR__.'/../Fixtures/operations/duplicate_completion.php',
+        config('operations.path').'/2026_10_02_120000_backfill.php',
+    );
 
     expect(fn () => Artisan::call('operations:run', ['operation' => $operation]))->toThrow(QueryException::class);
 
@@ -137,16 +101,10 @@ test('operations can dispatch jobs without becoming queued operations themselves
     Bus::fake();
 
     File::ensureDirectoryExists(config('operations.path'));
-    File::put(config('operations.path').'/2026_10_02_120000_dispatch.php', <<<'PHP'
-    <?php
-
-    return new class extends \DirectoryTree\Operations\Operation {
-        public function handle(\Illuminate\Console\Command $command): void
-        {
-            \Illuminate\Support\Facades\Bus::dispatch(new \DirectoryTree\Operations\Tests\Fixtures\ExampleJob);
-        }
-    };
-    PHP);
+    File::copy(
+        __DIR__.'/../Fixtures/operations/dispatch_job.php',
+        config('operations.path').'/2026_10_02_120000_dispatch.php',
+    );
 
     artisan('operations:run')->assertSuccessful();
 
@@ -158,7 +116,10 @@ test('operations can dispatch jobs without becoming queued operations themselves
 
 test('completed operation files are not loaded on subsequent runs', function (?string $operation) {
     File::ensureDirectoryExists(config('operations.path'));
-    File::put(config('operations.path').'/2026_10_02_120000_old.php', '<?php throw new \RuntimeException("Obsolete dependency.");');
+    File::copy(
+        __DIR__.'/../Fixtures/operations/throw_on_load.php',
+        config('operations.path').'/2026_10_02_120000_old.php',
+    );
 
     DB::table('operations')->insert(['name' => '2026_10_02_120000_old', 'completed_at' => now()]);
 
@@ -168,7 +129,10 @@ test('completed operation files are not loaded on subsequent runs', function (?s
 test('invalid operation files fail without being recorded', function () {
     File::ensureDirectoryExists(config('operations.path'));
     $path = config('operations.path').'/2026_10_02_120000_invalid.php';
-    File::put($path, '<?php return new stdClass;');
+    File::copy(
+        __DIR__.'/../Fixtures/operations/invalid_operation.php',
+        $path,
+    );
 
     expect(fn () => app(Runner::class)->run(app(RunCommand::class)))->toThrow(UnexpectedValueException::class);
 
