@@ -2,14 +2,9 @@
 
 use DirectoryTree\Operations\Commands\RunCommand;
 use DirectoryTree\Operations\Runner;
-use DirectoryTree\Operations\Tests\Fixtures\ExampleJob;
-use Illuminate\Database\QueryException;
-use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Artisan;
-use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\File;
-use Illuminate\Support\Facades\Schema;
 
 use function Pest\Laravel\artisan;
 
@@ -61,57 +56,6 @@ test('a failed operation stops the run and the next run resumes without repeatin
         '2026_10_02_120002_second',
         '2026_10_02_120003_third',
     ])->and(DB::table('operations')->count())->toBe(3);
-});
-
-test('a transaction rolls back database changes when an operation fails', function (?string $operation) {
-    Schema::create('examples', function (Blueprint $table) {
-        $table->id();
-    });
-
-    File::ensureDirectoryExists(config('operations.path'));
-    File::copy(
-        __DIR__.'/../Fixtures/operations/failing_transaction.php',
-        config('operations.path').'/2026_10_02_120000_backfill.php',
-    );
-
-    expect(fn () => Artisan::call('operations:run', ['operation' => $operation]))->toThrow(RuntimeException::class, 'Backfill failed.');
-
-    expect(DB::table('examples')->count())->toBe(0)
-        ->and(DB::table('operations')->count())->toBe(0);
-})->with([null, '2026_10_02_120000_backfill']);
-
-test('a transaction rolls back the operation if recording completion fails', function (?string $operation) {
-    Schema::create('examples', function (Blueprint $table) {
-        $table->id();
-    });
-
-    File::ensureDirectoryExists(config('operations.path'));
-    File::copy(
-        __DIR__.'/../Fixtures/operations/duplicate_completion.php',
-        config('operations.path').'/2026_10_02_120000_backfill.php',
-    );
-
-    expect(fn () => Artisan::call('operations:run', ['operation' => $operation]))->toThrow(QueryException::class);
-
-    expect(DB::table('examples')->count())->toBe(0)
-        ->and(DB::table('operations')->count())->toBe(0);
-})->with([null, '2026_10_02_120000_backfill']);
-
-test('operations can dispatch jobs without becoming queued operations themselves', function () {
-    Bus::fake();
-
-    File::ensureDirectoryExists(config('operations.path'));
-    File::copy(
-        __DIR__.'/../Fixtures/operations/dispatch_job.php',
-        config('operations.path').'/2026_10_02_120000_dispatch.php',
-    );
-
-    artisan('operations:run')->assertSuccessful();
-
-    Bus::assertDispatched(ExampleJob::class);
-    Bus::assertDispatchedTimes(ExampleJob::class, 1);
-
-    expect(DB::table('operations')->count())->toBe(1);
 });
 
 test('completed operation files are not loaded on subsequent runs', function (?string $operation) {

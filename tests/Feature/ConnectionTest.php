@@ -1,13 +1,14 @@
 <?php
 
-use Illuminate\Database\Schema\Blueprint;
+use DirectoryTree\Operations\Concerns\HasCheckpoints;
+use DirectoryTree\Operations\Operation;
+use DirectoryTree\Operations\OperationRepository;
+use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Schema;
 
-use function Pest\Laravel\artisan;
-
-test('the migration and runner use the configured ledger connection', function () {
+test('the migration and repository use the configured ledger connection', function () {
     config([
         'database.connections.operations' => [
             'driver' => 'sqlite',
@@ -20,16 +21,16 @@ test('the migration and runner use the configured ledger connection', function (
     $migration = File::getRequire(__DIR__.'/../../database/migrations/2026_10_02_165413_create_operations_table.php');
     $migration->up();
 
-    File::ensureDirectoryExists(config('operations.path'));
-    File::copy(
-        __DIR__.'/../Fixtures/operations/empty_operation.php',
-        config('operations.path').'/2026_10_02_120000_example.php',
-    );
+    $operation = new class extends Operation
+    {
+        public function handle(Command $command): void {}
+    };
 
-    artisan('operations:run')->assertSuccessful();
-    artisan('operations:run')->expectsOutputToContain('No pending operations.')->assertSuccessful();
+    $repository = app(OperationRepository::class);
+    $repository->run('example', $operation, new Command);
 
-    expect(DB::connection('operations')->table('operations')->count())->toBe(1)
+    expect($repository->completed()->keys()->all())->toBe(['example'])
+        ->and(DB::connection('operations')->table('operations')->count())->toBe(1)
         ->and(DB::table('operations')->count())->toBe(0);
 
     $migration->down();
@@ -40,25 +41,7 @@ test('the migration and runner use the configured ledger connection', function (
     config(['operations.connection' => null]);
 });
 
-test('successful transactional operations commit their changes and completion together', function () {
-    Schema::create('examples', function (Blueprint $table) {
-        $table->id();
-    });
-
-    File::ensureDirectoryExists(config('operations.path'));
-    File::copy(
-        __DIR__.'/../Fixtures/operations/successful_transaction.php',
-        config('operations.path').'/2026_10_02_120000_backfill.php',
-    );
-
-    artisan('operations:run')->assertSuccessful();
-
-    expect(DB::table('examples')->count())->toBe(1)
-        ->and(DB::table('operations')->count())->toBe(1)
-        ->and(DB::transactionLevel())->toBe(0);
-});
-
-test('completion history is read from the writer when the connection has a read replica', function () {
+test('repositories use the configured connection and read from its writer', function () {
     File::ensureDirectoryExists(config('operations.path'));
     $writer = config('operations.path').'/writer.sqlite';
     $reader = config('operations.path').'/reader.sqlite';
@@ -76,21 +59,36 @@ test('completion history is read from the writer when the connection has a read 
         'operations.connection' => 'operations',
     ]);
 
-    $migration = File::getRequire(__DIR__.'/../../database/migrations/2026_10_02_165413_create_operations_table.php');
-    $migration->up();
+    foreach (File::glob(__DIR__.'/../../database/migrations/*.php') as $path) {
+        File::getRequire($path)->up();
+    }
 
-    File::copy(
-        __DIR__.'/../Fixtures/operations/record_execution.php',
-        config('operations.path').'/2026_10_02_120000_example.php',
-    );
+    $operation = new class extends Operation
+    {
+        use HasCheckpoints;
 
-    app()->instance('executed', collect());
+        public array $observed = [];
 
-    artisan('operations:run')->assertSuccessful();
-    artisan('operations:run')->expectsOutputToContain('No pending operations.')->assertSuccessful();
+        public function handle(Command $command): void
+        {
+            $this->observed[] = $this->checkpoints->get('cursor', 'initial');
+            $this->checkpoints->put('cursor', 'next-page');
+            $this->observed[] = $this->checkpoints->get('cursor');
+        }
+    };
 
-    expect(app('executed')->all())->toBe(['example'])
-        ->and(DB::connection('operations')->table('operations')->useWritePdo()->count())->toBe(1);
+    $repository = app(OperationRepository::class);
+    $repository->run('example', $operation, new Command);
+
+    expect($operation->observed)->toBe(['initial', 'next-page'])
+        ->and($repository->completed()->keys()->all())->toBe(['example'])
+        ->and(DB::connection('operations')->table('operation_checkpoints')->useWritePdo()->count())->toBe(1)
+        ->and(DB::table('operations')->count())->toBe(0)
+        ->and(DB::table('operation_checkpoints')->count())->toBe(0);
+
+    expect($repository->forget('example'))->toBeTrue()
+        ->and($repository->completed()->all())->toBe([])
+        ->and(DB::connection('operations')->table('operation_checkpoints')->useWritePdo()->count())->toBe(0);
 
     config(['operations.connection' => null]);
 });

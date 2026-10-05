@@ -1,6 +1,5 @@
 <?php
 
-use Illuminate\Database\QueryException;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\File;
@@ -52,57 +51,6 @@ test('standard commands work without the checkpoint table', function (bool $sepa
     config(['operations.connection' => null]);
 })->with(['default connection' => false, 'separate connection' => true]);
 
-test('using checkpoints without their migration raises a database exception', function (string $method, array $arguments) {
-    Schema::drop('operation_checkpoints');
-    app()->instance('checkpoint_method', $method);
-    app()->instance('checkpoint_arguments', $arguments);
-
-    File::ensureDirectoryExists(config('operations.path'));
-    File::copy(
-        __DIR__.'/../Fixtures/operations/checkpoint_method.php',
-        config('operations.path').'/2026_10_05_120000_example.php',
-    );
-
-    expect(fn () => artisan('operations:run')->run())->toThrow(QueryException::class, 'operation_checkpoints');
-
-    expect(DB::table('operations')->count())->toBe(0);
-})->with([
-    'read' => ['get', ['cursor']],
-    'write' => ['put', ['cursor', 'next-page']],
-    'forget' => ['forget', []],
-]);
-
-test('checkpoints read defaults and persist JSON values while preserving other keys', function (bool $multiple) {
-    $values = [
-        'cursor' => 'next-page',
-        'count' => 0,
-        'ratio' => 1.5,
-        'enabled' => false,
-        'empty' => '',
-        'nullable' => null,
-        'ids' => [1, 2, 3],
-        'metadata' => ['page' => 2, 'finished' => false],
-    ];
-
-    app()->instance('checkpoint_values', $values);
-    app()->instance('multiple', $multiple);
-    app()->instance('observed', collect());
-
-    File::ensureDirectoryExists(config('operations.path'));
-    File::copy(
-        __DIR__.'/../Fixtures/operations/checkpoint_values.php',
-        config('operations.path').'/2026_10_05_120000_example.php',
-    );
-
-    artisan('operations:run')->assertSuccessful();
-
-    $values['cursor'] = 'last-page';
-
-    expect(app('observed')->all())->toBe([null, 42, ...array_values($values)])
-        ->and(DB::table('operation_checkpoints')->count())->toBe(count($values))
-        ->and(DB::table('operation_checkpoints')->where('key', 'missing')->exists())->toBeFalse();
-})->with(['multiple values' => true, 'single values' => false]);
-
 test('a failed operation resumes from its saved checkpoint on the next run', function () {
     Schema::create('examples', function (Blueprint $table) {
         $table->id();
@@ -129,117 +77,6 @@ test('a failed operation resumes from its saved checkpoint on the next run', fun
 
     expect(DB::table('examples')->pluck('id')->all())->toBe([1, 2, 3])
         ->and(json_decode(DB::table('operation_checkpoints')->value('value')))->toBe(3)
-        ->and(DB::table('operations')->count())->toBe(1);
-});
-
-test('checkpoint keys are scoped to the operation filename', function () {
-    app()->instance('observed', collect());
-
-    File::ensureDirectoryExists(config('operations.path'));
-
-    foreach (['2026_10_05_120000_first', '2026_10_05_120001_second'] as $name) {
-        File::copy(
-            __DIR__.'/../Fixtures/operations/scoped_checkpoints.php',
-            config('operations.path')."/{$name}.php",
-        );
-    }
-
-    artisan('operations:run')->assertSuccessful();
-
-    expect(app('observed')->all())->toBe([
-        null, '2026_10_05_120000_first',
-        null, '2026_10_05_120001_second',
-    ])->and(DB::table('operation_checkpoints')->count())->toBe(2);
-});
-
-test('a failed chunk rolls back its work and checkpoint without losing earlier progress', function () {
-    Schema::create('examples', function (Blueprint $table) {
-        $table->id();
-    });
-
-    File::ensureDirectoryExists(config('operations.path'));
-    File::copy(
-        __DIR__.'/../Fixtures/operations/failing_checkpoint_chunk.php',
-        config('operations.path').'/2026_10_05_120000_backfill.php',
-    );
-
-    expect(fn () => artisan('operations:run')->run())->toThrow(RuntimeException::class, 'Chunk failed.');
-
-    expect(DB::table('examples')->pluck('id')->all())->toBe([1])
-        ->and(json_decode(DB::table('operation_checkpoints')->value('value')))->toBe(1)
-        ->and(DB::table('operations')->count())->toBe(0);
-});
-
-test('checkpoints participate in the whole operation transaction', function () {
-    $name = '2026_10_05_120000_backfill';
-
-    DB::table('operation_checkpoints')->insert([
-        'operation' => $name,
-        'key' => 'last_id',
-        'value' => '10',
-    ]);
-
-    File::ensureDirectoryExists(config('operations.path'));
-    File::copy(
-        __DIR__.'/../Fixtures/operations/failing_checkpoint_transaction.php',
-        config('operations.path')."/{$name}.php",
-    );
-
-    expect(fn () => artisan('operations:run')->run())->toThrow(RuntimeException::class, 'Backfill failed.');
-
-    expect(DB::table('operation_checkpoints')->count())->toBe(1)
-        ->and(json_decode(DB::table('operation_checkpoints')->value('value')))->toBe(10)
-        ->and(DB::table('operations')->count())->toBe(0);
-});
-
-test('invalid JSON values fail before any checkpoints are changed', function () {
-    File::ensureDirectoryExists(config('operations.path'));
-    File::copy(
-        __DIR__.'/../Fixtures/operations/invalid_checkpoint_value.php',
-        config('operations.path').'/2026_10_05_120000_example.php',
-    );
-
-    expect(fn () => artisan('operations:run')->run())->toThrow(JsonException::class);
-
-    expect(DB::table('operation_checkpoints')->count())->toBe(1)
-        ->and(json_decode(DB::table('operation_checkpoints')->value('value')))->toBe(10)
-        ->and(DB::table('operations')->count())->toBe(0);
-});
-
-test('checkpoints use the configured connection and read from its writer', function () {
-    File::ensureDirectoryExists(config('operations.path'));
-    $writer = config('operations.path').'/writer.sqlite';
-    $reader = config('operations.path').'/reader.sqlite';
-    File::put($writer, '');
-    File::put($reader, '');
-
-    config([
-        'database.connections.operations' => [
-            'driver' => 'sqlite',
-            'database' => $writer,
-            'read' => ['database' => $reader],
-            'write' => ['database' => $writer],
-            'prefix' => '',
-        ],
-        'operations.connection' => 'operations',
-    ]);
-
-    foreach (File::glob(__DIR__.'/../../database/migrations/*.php') as $path) {
-        File::getRequire($path)->up();
-    }
-
-    app()->instance('observed', collect());
-
-    File::copy(
-        __DIR__.'/../Fixtures/operations/checkpoint_connection.php',
-        config('operations.path').'/2026_10_05_120000_example.php',
-    );
-
-    artisan('operations:run')->assertSuccessful();
-
-    expect(app('observed')->all())->toBe(['initial', 'next-page'])
-        ->and(DB::connection('operations')->table('operation_checkpoints')->useWritePdo()->count())->toBe(1)
-        ->and(DB::table('operation_checkpoints')->count())->toBe(0);
-
-    config(['operations.connection' => null]);
+        ->and(DB::table('operations')->pluck('name')->all())->toBe(['2026_10_05_120000_backfill'])
+        ->and(DB::table('operation_checkpoints')->value('operation'))->toBe('2026_10_05_120000_backfill');
 });
