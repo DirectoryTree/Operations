@@ -58,9 +58,10 @@ test('standard commands work without the checkpoint table', function (bool $sepa
     config(['operations.connection' => null]);
 })->with(['default connection' => false, 'separate connection' => true]);
 
-test('using checkpoints without their migration raises a database exception', function (string $method) {
+test('using checkpoints without their migration raises a database exception', function (string $method, array $arguments) {
     Schema::drop('operation_checkpoints');
     app()->instance('checkpoint_method', $method);
+    app()->instance('checkpoint_arguments', $arguments);
 
     File::ensureDirectoryExists(config('operations.path'));
     File::put(config('operations.path').'/2026_10_05_120000_example.php', <<<'PHP'
@@ -71,7 +72,7 @@ test('using checkpoints without their migration raises a database exception', fu
 
         public function handle(\Illuminate\Console\Command $command): void
         {
-            $this->checkpoints->{app('checkpoint_method')}('cursor', 'next-page');
+            $this->checkpoints->{app('checkpoint_method')}(...app('checkpoint_arguments'));
         }
     };
     PHP);
@@ -80,8 +81,9 @@ test('using checkpoints without their migration raises a database exception', fu
 
     expect(DB::table('operations')->count())->toBe(0);
 })->with([
-    'read' => 'get',
-    'write' => 'put',
+    'read' => ['get', ['cursor']],
+    'write' => ['put', ['cursor', 'next-page']],
+    'forget' => ['forget', []],
 ]);
 
 test('checkpoints read defaults and persist JSON values while preserving other keys', function (bool $multiple) {

@@ -39,7 +39,8 @@ class OperationRepository
                 ->where('name', $name)
                 ->delete();
 
-            $forgotten = $this->checkpoints($name)->forget();
+            $forgotten = $this->connection->getSchemaBuilder()->hasTable('operation_checkpoints')
+                && $this->checkpoints($name)->forget();
 
             return $deleted > 0 || $forgotten;
         });

@@ -280,7 +280,7 @@ After a failure, `operations:run` starts `handle()` again. Your code reads the s
 
 In the example above, an interrupted chunk may run again. Write work that can safely repeat, or wrap each chunk's database changes and checkpoint write in a transaction on the same connection. Checkpoints use `operations.connection` and participate in its active transaction. With `WithinTransaction`, a failure rolls back all checkpoints written during that attempt along with the operation's database changes. External effects, such as API calls, are not rolled back.
 
-The standard `operations-migrations` tag only publishes the operations table. Running, checking status, and forgetting operations work without the checkpoint table; `operations:forget` clears checkpoints when that table exists. Reading or writing checkpoints before installing their migration raises a database exception.
+The standard `operations-migrations` tag only publishes the operations table. Running, checking status, and forgetting operations work without the checkpoint table; `operations:forget` clears checkpoints when that table exists. Calling the checkpoint repository's `get()`, `put()`, or `forget()` methods before installing its migration raises a database exception.
 
 ### Transactions
 

@@ -52,14 +52,10 @@ class CheckpointRepository
     }
 
     /**
-     * Delete an operation's checkpoints when checkpoint storage is installed.
+     * Delete the operation's checkpoints.
      */
     public function forget(): bool
     {
-        if (! $this->connection->getSchemaBuilder()->hasTable('operation_checkpoints')) {
-            return false;
-        }
-
         return $this->connection->table('operation_checkpoints')
             ->where('operation', $this->name)
             ->delete() > 0;
