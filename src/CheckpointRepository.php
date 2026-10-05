@@ -52,6 +52,15 @@ class CheckpointRepository
     }
 
     /**
+     * Determine whether the checkpoint table is installed.
+     */
+    public function installed(): bool
+    {
+        return $this->connection->getSchemaBuilder()
+            ->hasTable('operation_checkpoints');
+    }
+
+    /**
      * Delete the operation's checkpoints.
      */
     public function forget(): bool
