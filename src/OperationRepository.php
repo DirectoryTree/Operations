@@ -14,7 +14,8 @@ class OperationRepository
      * Create a new operation repository.
      */
     public function __construct(
-        protected ConnectionInterface $connection
+        protected ConnectionInterface $connection,
+        protected CheckpointRepository $checkpoints
     ) {}
 
     /**
@@ -30,41 +31,6 @@ class OperationRepository
     }
 
     /**
-     * Get a checkpoint from the writer connection.
-     */
-    public function getCheckpoint(string $operation, string $name, mixed $default = null): mixed
-    {
-        $value = $this->connection->table('operation_checkpoints')
-            ->useWritePdo()
-            ->where('operation', $operation)
-            ->where('name', $name)
-            ->value('value');
-
-        return $value === null ? value($default) : json_decode($value, true, flags: JSON_THROW_ON_ERROR);
-    }
-
-    /**
-     * Persist checkpoint values without replacing other keys.
-     *
-     * @param  array<string, mixed>  $values
-     */
-    public function saveCheckpoints(string $operation, array $values): void
-    {
-        $checkpoints = [];
-
-        foreach ($values as $name => $value) {
-            $checkpoints[] = [
-                'operation' => $operation,
-                'name' => $name,
-                'value' => json_encode($value, JSON_THROW_ON_ERROR),
-            ];
-        }
-
-        $this->connection->table('operation_checkpoints')
-            ->upsert($checkpoints, ['operation', 'name'], ['value']);
-    }
-
-    /**
      * Delete the completion record and checkpoints for the given operation.
      */
     public function forget(string $name): bool
@@ -74,13 +40,9 @@ class OperationRepository
                 ->where('name', $name)
                 ->delete();
 
-            if ($this->connection->getSchemaBuilder()->hasTable('operation_checkpoints')) {
-                $deleted += $this->connection->table('operation_checkpoints')
-                    ->where('operation', $name)
-                    ->delete();
-            }
+            $forgotten = $this->checkpoints->forget($name);
 
-            return $deleted > 0;
+            return $deleted > 0 || $forgotten;
         });
     }
 
@@ -90,7 +52,7 @@ class OperationRepository
     public function run(string $name, Operation $operation, Command $command): void
     {
         if (in_array(HasCheckpoints::class, class_uses_recursive($operation))) {
-            $operation->setCheckpointContext($name, $this);
+            $operation->setCheckpointContext($name, $this->checkpoints);
         }
 
         $run = function () use ($name, $operation, $command) {

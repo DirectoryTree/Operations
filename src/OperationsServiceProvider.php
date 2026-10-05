@@ -17,8 +17,13 @@ class OperationsServiceProvider extends ServiceProvider
     {
         $this->mergeConfigFrom(__DIR__.'/../config/operations.php', 'operations');
 
-        $this->app->bind(OperationRepository::class, fn ($app) => new OperationRepository(
+        $this->app->bind(CheckpointRepository::class, fn ($app) => new CheckpointRepository(
             $app['db']->connection($app['config']['operations.connection'])
+        ));
+
+        $this->app->bind(OperationRepository::class, fn ($app) => new OperationRepository(
+            $app['db']->connection($app['config']['operations.connection']),
+            $app->make(CheckpointRepository::class)
         ));
     }
 
