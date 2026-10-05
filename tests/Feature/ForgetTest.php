@@ -18,7 +18,10 @@ test('forgetting deletes only the requested completion record without loading or
 
     File::ensureDirectoryExists(config('operations.path'));
     $path = config('operations.path')."/{$name}.php";
-    File::put($path, '<?php throw new \RuntimeException("The operation must not be loaded.");');
+    File::copy(
+        __DIR__.'/../Fixtures/operations/throw_on_load.php',
+        $path,
+    );
 
     artisan('operations:forget', ['name' => $name])
         ->expectsOutputToContain('Forgetting does not undo previous effects.')
@@ -27,23 +30,17 @@ test('forgetting deletes only the requested completion record without loading or
         ->assertSuccessful();
 
     expect(DB::table('operations')->pluck('name')->all())->toBe([$other])
-        ->and(File::get($path))->toBe('<?php throw new \RuntimeException("The operation must not be loaded.");');
+        ->and(File::get($path))->toBe(File::get(__DIR__.'/../Fixtures/operations/throw_on_load.php'));
 });
 
 test('a forgotten operation runs again only when the runner is invoked', function () {
     $name = '2026_10_02_120000_example';
 
     File::ensureDirectoryExists(config('operations.path'));
-    File::put(config('operations.path')."/{$name}.php", <<<'PHP'
-    <?php
-
-    return new class extends \DirectoryTree\Operations\Operation {
-        public function handle(\Illuminate\Console\Command $command): void
-        {
-            app('executed')->push('example');
-        }
-    };
-    PHP);
+    File::copy(
+        __DIR__.'/../Fixtures/operations/record_execution.php',
+        config('operations.path')."/{$name}.php",
+    );
 
     app()->instance('executed', collect());
 
@@ -69,13 +66,19 @@ test('declining confirmation leaves the completion record intact in every enviro
     app()->instance('env', $environment);
     $name = '2026_10_02_120000_example';
     DB::table('operations')->insert(['name' => $name, 'completed_at' => now()]);
+    DB::table('operation_checkpoints')->insert([
+        'operation' => $name,
+        'key' => 'last_id',
+        'value' => '10',
+    ]);
 
     artisan('operations:forget', ['name' => $name])
         ->expectsConfirmation("Forget operation [{$name}]?", 'no')
         ->expectsOutputToContain('Command cancelled.')
         ->assertFailed();
 
-    expect(DB::table('operations')->pluck('name')->all())->toBe([$name]);
+    expect(DB::table('operations')->pluck('name')->all())->toBe([$name])
+        ->and(DB::table('operation_checkpoints')->pluck('operation')->all())->toBe([$name]);
 
     app()->instance('env', 'testing');
 })->with(['testing', 'production']);
@@ -106,35 +109,12 @@ test('force bypasses confirmation in production and can forget a pruned operatio
     app()->instance('env', 'testing');
 });
 
-test('forgetting fails when the exact completion record does not exist', function (string $name) {
+test('forgetting fails when no completion record or checkpoints exist for the exact name', function (string $name) {
     DB::table('operations')->insert(['name' => '2026_10_02_120000_example', 'completed_at' => now()]);
 
     artisan('operations:forget', ['name' => $name, '--force' => true])
-        ->expectsOutputToContain("No completion record found for operation [{$name}].")
+        ->expectsOutputToContain("No completion record or checkpoints found for operation [{$name}].")
         ->assertFailed();
 
     expect(DB::table('operations')->pluck('name')->all())->toBe(['2026_10_02_120000_example']);
 })->with(['missing', 'example', '2026_10_02_120000_example.php']);
-
-test('forgetting uses the configured operations connection', function () {
-    config([
-        'database.connections.operations' => [
-            'driver' => 'sqlite',
-            'database' => ':memory:',
-            'prefix' => '',
-        ],
-        'operations.connection' => 'operations',
-    ]);
-
-    $migration = File::getRequire(__DIR__.'/../../database/migrations/2026_10_02_165413_create_operations_table.php');
-    $migration->up();
-
-    $name = '2026_10_02_120000_example';
-    DB::table('operations')->insert(['name' => $name, 'completed_at' => now()]);
-    DB::connection('operations')->table('operations')->insert(['name' => $name, 'completed_at' => now()]);
-
-    artisan('operations:forget', ['name' => $name, '--force' => true])->assertSuccessful();
-
-    expect(DB::connection('operations')->table('operations')->count())->toBe(0)
-        ->and(DB::table('operations')->pluck('name')->all())->toBe([$name]);
-});

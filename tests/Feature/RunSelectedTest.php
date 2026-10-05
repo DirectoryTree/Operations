@@ -13,19 +13,16 @@ test('only the selected operation runs and is skipped after completion', functio
     File::ensureDirectoryExists(config('operations.path'));
 
     foreach (['2026_10_03_110000_unrelated', '2026_10_03_130000_unrelated'] as $name) {
-        File::put(config('operations.path')."/{$name}.php", '<?php throw new \RuntimeException("Unrelated operation loaded.");');
+        File::copy(
+            __DIR__.'/../Fixtures/operations/throw_on_load.php',
+            config('operations.path')."/{$name}.php",
+        );
     }
 
-    File::put(config('operations.path').'/2026_10_03_120000_selected.php', <<<'PHP'
-    <?php
-
-    return new class extends \DirectoryTree\Operations\Operation {
-        public function handle(\Illuminate\Console\Command $command): void
-        {
-            $command->info('Selected operation executed.');
-        }
-    };
-    PHP);
+    File::copy(
+        __DIR__.'/../Fixtures/operations/selected_operation.php',
+        config('operations.path').'/2026_10_03_120000_selected.php',
+    );
 
     artisan('operations:run', ['operation' => '2026_10_03_120000_selected'])
         ->expectsOutputToContain('Selected operation executed.')
@@ -49,7 +46,10 @@ test('invalid selections fail clearly without loading any operations', function 
     File::ensureDirectoryExists(config('operations.path'));
 
     foreach (['2026_10_03_120000_backfill', '2026_10_03_130000_backfill'] as $name) {
-        File::put(config('operations.path')."/{$name}.php", '<?php throw new \RuntimeException("Unrelated operation loaded.");');
+        File::copy(
+            __DIR__.'/../Fixtures/operations/throw_on_load.php',
+            config('operations.path')."/{$name}.php",
+        );
     }
 
     expect(fn () => artisan('operations:run', [

@@ -7,7 +7,10 @@ use function Pest\Laravel\artisan;
 
 test('status includes pending operations and completed operations whose files were removed', function () {
     File::ensureDirectoryExists(config('operations.path'));
-    File::put(config('operations.path').'/2026_10_02_120002_pending.php', '<?php throw new \RuntimeException("Status must not execute operations.");');
+    File::copy(
+        __DIR__.'/../Fixtures/operations/throw_on_load.php',
+        config('operations.path').'/2026_10_02_120002_pending.php',
+    );
     DB::table('operations')->insert([
         'name' => '2026_10_02_120001_completed',
         'completed_at' => '2026-10-02 12:00:00',

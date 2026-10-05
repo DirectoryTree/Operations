@@ -21,7 +21,7 @@ class ForgetCommand extends Command
      *
      * @var string
      */
-    protected $description = 'Delete the completion record of an operation';
+    protected $description = 'Delete the completion record and checkpoints of an operation';
 
     /**
      * Execute the console command.
@@ -39,7 +39,7 @@ class ForgetCommand extends Command
         }
 
         if (! $repository->forget($name)) {
-            $this->components->error("No completion record found for operation [{$name}].");
+            $this->components->error("No completion record or checkpoints found for operation [{$name}].");
 
             return self::FAILURE;
         }

@@ -8,26 +8,10 @@ use Symfony\Component\Console\Output\BufferedOutput;
 
 test('operations can print messages tables and progress between their start and completion lines', function () {
     File::ensureDirectoryExists(config('operations.path'));
-    File::put(config('operations.path').'/2026_10_02_120000_output.php', <<<'PHP'
-    <?php
-
-    return new class extends \DirectoryTree\Operations\Operation {
-        public function handle(\Illuminate\Console\Command $command): void
-        {
-            $command->info('Backfilling company names...');
-            $command->table(['Updated'], [[2]]);
-
-            $output = $command->getOutput();
-            $output->progressStart(2);
-            $output->progressAdvance(2);
-            $output->progressFinish();
-
-            $command->info('Company names updated.');
-            app()->instance('forced', $command->option('force'));
-            app()->instance('completed_during_operation', \Illuminate\Support\Facades\DB::table('operations')->count());
-        }
-    };
-    PHP);
+    File::copy(
+        __DIR__.'/../Fixtures/operations/console_output.php',
+        config('operations.path').'/2026_10_02_120000_output.php',
+    );
 
     $output = new BufferedOutput;
     $exitCode = Artisan::call('operations:run', ['--force' => true], $output);
@@ -45,22 +29,10 @@ test('operations can print messages tables and progress between their start and 
 
 test('quiet mode suppresses both operation output and runner status lines', function () {
     File::ensureDirectoryExists(config('operations.path'));
-    File::put(config('operations.path').'/2026_10_02_120000_quiet.php', <<<'PHP'
-    <?php
-
-    return new class extends \DirectoryTree\Operations\Operation {
-        public function handle(\Illuminate\Console\Command $command): void
-        {
-            $command->info('Backfilling company names...');
-            $command->table(['Updated'], [[1]]);
-
-            $output = $command->getOutput();
-            $output->progressStart(1);
-            $output->progressAdvance();
-            $output->progressFinish();
-        }
-    };
-    PHP);
+    File::copy(
+        __DIR__.'/../Fixtures/operations/quiet_output.php',
+        config('operations.path').'/2026_10_02_120000_quiet.php',
+    );
 
     $output = new BufferedOutput;
     $exitCode = Artisan::call('operations:run', ['--quiet' => true], $output);
@@ -72,26 +44,10 @@ test('quiet mode suppresses both operation output and runner status lines', func
 
 test('failed operations never print a successful completion line', function (string $failure, string $exception) {
     File::ensureDirectoryExists(config('operations.path'));
-    File::put(config('operations.path').'/2026_10_02_120000_failure.php', <<<'PHP'
-    <?php
-
-    return new class extends \DirectoryTree\Operations\Operation implements \DirectoryTree\Operations\Contracts\WithinTransaction {
-        public function handle(\Illuminate\Console\Command $command): void
-        {
-            $command->info('Starting the backfill...');
-
-            if (app('failure') === 'operation') {
-                throw new \RuntimeException('Backfill failed.');
-            }
-
-            // Cause the runner's completion insert to fail on the unique name.
-            \Illuminate\Support\Facades\DB::table('operations')->insert([
-                'name' => basename(__FILE__, '.php'),
-                'completed_at' => now(),
-            ]);
-        }
-    };
-    PHP);
+    File::copy(
+        __DIR__.'/../Fixtures/operations/failing_output.php',
+        config('operations.path').'/2026_10_02_120000_failure.php',
+    );
 
     app()->instance('failure', $failure);
     $output = new BufferedOutput;

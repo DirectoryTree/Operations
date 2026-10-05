@@ -2,6 +2,7 @@
 
 namespace DirectoryTree\Operations;
 
+use DirectoryTree\Operations\Concerns\HasCheckpoints;
 use DirectoryTree\Operations\Contracts\WithinTransaction;
 use Illuminate\Console\Command;
 use Illuminate\Database\ConnectionInterface;
@@ -29,13 +30,21 @@ class OperationRepository
     }
 
     /**
-     * Delete the completion record for the given operation.
+     * Delete the completion record and checkpoints for the given operation.
      */
     public function forget(string $name): bool
     {
-        return $this->connection->table('operations')
-            ->where('name', $name)
-            ->delete() > 0;
+        return $this->connection->transaction(function () use ($name) {
+            $deleted = $this->connection->table('operations')
+                ->where('name', $name)
+                ->delete();
+
+            $checkpoints = $this->checkpoints($name);
+
+            $forgotten = $checkpoints->installed() && $checkpoints->forget();
+
+            return $deleted > 0 || $forgotten;
+        });
     }
 
     /**
@@ -43,6 +52,10 @@ class OperationRepository
      */
     public function run(string $name, Operation $operation, Command $command): void
     {
+        if (in_array(HasCheckpoints::class, class_uses_recursive($operation))) {
+            $operation->setCheckpoints($this->checkpoints($name));
+        }
+
         $run = function () use ($name, $operation, $command) {
             $operation->handle($command);
 
@@ -57,5 +70,13 @@ class OperationRepository
         } else {
             $run();
         }
+    }
+
+    /**
+     * Create a checkpoint repository for the given operation.
+     */
+    protected function checkpoints(string $name): CheckpointRepository
+    {
+        return new CheckpointRepository($this->connection, $name);
     }
 }

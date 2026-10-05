@@ -219,9 +219,68 @@ The command asks for confirmation. Use `--force` to skip the prompt:
 php artisan operations:forget 2026_10_02_120000_backfill_company_names --force
 ```
 
-Forgetting only deletes the completion record. It does not undo previous effects, delete the file, or execute the operation. If the file is present, the next `operations:run` will execute it again. Make sure it is safe to repeat.
+Forgetting deletes the completion record and any saved checkpoints. It does not undo previous effects, delete the file, or execute the operation. If the file is present, the next `operations:run` will execute it again from the beginning. Make sure it is safe to repeat.
 
-You can also forget records whose files have been removed. The command fails if no completion record matches the supplied name. Failed operations do not need to be forgotten; they are already pending.
+You can also forget records whose files have been removed, or clear checkpoints from an unfinished operation. The command fails if neither a completion record nor checkpoints match the supplied name. Failed operations are already pending; only forget them if you want to discard their saved progress.
+
+### Checkpoints
+
+Checkpoints are optional. Publish and run their migration only if you need to save progress between attempts:
+
+```bash
+php artisan vendor:publish --tag=operations-checkpoints-migration
+php artisan migrate
+```
+
+Add the `DirectoryTree\Operations\Concerns\HasCheckpoints` trait to access the operation's checkpoint repository. Use `get()` to read a value with an optional default, and `put()` to save a value or an array of values:
+
+```php
+$cursor = $this->checkpoints->get('cursor');
+$lastId = $this->checkpoints->get('last_id', 0);
+
+$this->checkpoints->put('last_id', 15000);
+
+$this->checkpoints->put([
+    'cursor' => $nextCursor,
+    'processed' => $processed,
+]);
+```
+
+Keys are scoped to the operation's filename. Writes update the supplied keys and preserve other saved values. Values are stored as JSON and read back as scalars or arrays; use JSON-compatible values such as strings, numbers, booleans, arrays, and `null`. Saving `null` retains the key, so reading it returns `null` even when a default is provided.
+
+For example, save the last processed ID to resume a backfill:
+
+```php
+use App\Models\Company;
+use DirectoryTree\Operations\Concerns\HasCheckpoints;
+use DirectoryTree\Operations\Operation;
+use Illuminate\Console\Command;
+use Illuminate\Support\Collection;
+
+return new class extends Operation
+{
+    use HasCheckpoints;
+
+    public function handle(Command $command): void
+    {
+        Company::query()
+            ->where('id', '>', $this->checkpoints->get('last_id', 0))
+            ->chunkById(1000, function (Collection $companies) {
+                foreach ($companies as $company) {
+                    $company->update(['display_name' => $company->name]);
+                }
+
+                $this->checkpoints->put('last_id', $companies->last()->id);
+            });
+    }
+};
+```
+
+After a failure, `operations:run` starts `handle()` again. Your code reads the saved checkpoint to decide where to continue. Saving a checkpoint does not mark the operation complete or prevent concurrent execution. Checkpoints remain after completion until the operation is forgotten. You can also call `$this->checkpoints->forget()` to clear all of the operation's checkpoints without changing its completion record.
+
+In the example above, an interrupted chunk may run again. Write work that can safely repeat, or wrap each chunk's database changes and checkpoint write in a transaction on the same connection. Checkpoints use `operations.connection` and participate in its active transaction. With `WithinTransaction`, a failure rolls back all checkpoints written during that attempt along with the operation's database changes. External effects, such as API calls, are not rolled back.
+
+The standard `operations-migrations` tag only publishes the operations table. Running, checking status, and forgetting operations work without the checkpoint table; `operations:forget` clears checkpoints when that table exists. Calling the checkpoint repository's `get()`, `put()`, or `forget()` methods before installing its migration raises a database exception.
 
 ### Transactions
 
@@ -317,4 +376,4 @@ return [
 ];
 ```
 
-`connection` selects the database connection for the operations table and optional transactions. `null` uses the application's default connection. It does not change the connection used by your application models.
+`connection` selects the database connection for the operations and checkpoint tables, and optional transactions. `null` uses the application's default connection. It does not change the connection used by your application models.
