@@ -14,9 +14,9 @@ return new class extends Migration
         Schema::connection(config('operations.connection'))->create('operation_checkpoints', function (Blueprint $table) {
             $table->id();
             $table->string('operation');
-            $table->string('name');
+            $table->string('key');
             $table->json('value');
-            $table->unique(['operation', 'name']);
+            $table->unique(['operation', 'key']);
         });
     }
 

@@ -138,7 +138,7 @@ test('checkpoints read defaults and persist JSON values while preserving other k
 
     expect(app('observed')->all())->toBe([null, 42, ...array_values($values)])
         ->and(DB::table('operation_checkpoints')->count())->toBe(count($values))
-        ->and(DB::table('operation_checkpoints')->where('name', 'missing')->exists())->toBeFalse();
+        ->and(DB::table('operation_checkpoints')->where('key', 'missing')->exists())->toBeFalse();
 })->with(['multiple values' => true, 'single values' => false]);
 
 test('a failed operation resumes from its saved checkpoint on the next run', function () {
@@ -185,7 +185,7 @@ test('a failed operation resumes from its saved checkpoint on the next run', fun
         ->and(DB::table('operations')->count())->toBe(1);
 });
 
-test('checkpoint names are scoped to the operation filename', function () {
+test('checkpoint keys are scoped to the operation filename', function () {
     app()->instance('observed', collect());
 
     File::ensureDirectoryExists(config('operations.path'));
@@ -255,7 +255,7 @@ test('checkpoints participate in the whole operation transaction', function () {
 
     DB::table('operation_checkpoints')->insert([
         'operation' => $name,
-        'name' => 'last_id',
+        'key' => 'last_id',
         'value' => '10',
     ]);
 

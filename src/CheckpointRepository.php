@@ -22,7 +22,7 @@ class CheckpointRepository
         $value = $this->connection->table('operation_checkpoints')
             ->useWritePdo()
             ->where('operation', $this->operation)
-            ->where('name', $key)
+            ->where('key', $key)
             ->value('value');
 
         return $value === null ? value($default) : json_decode($value, true, flags: JSON_THROW_ON_ERROR);
@@ -42,13 +42,13 @@ class CheckpointRepository
         foreach ($values as $key => $value) {
             $checkpoints[] = [
                 'operation' => $this->operation,
-                'name' => $key,
+                'key' => $key,
                 'value' => json_encode($value, JSON_THROW_ON_ERROR),
             ];
         }
 
         $this->connection->table('operation_checkpoints')
-            ->upsert($checkpoints, ['operation', 'name'], ['value']);
+            ->upsert($checkpoints, ['operation', 'key'], ['value']);
     }
 
     /**

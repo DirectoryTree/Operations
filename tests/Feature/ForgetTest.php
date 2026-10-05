@@ -71,7 +71,7 @@ test('declining confirmation leaves the completion record intact in every enviro
     DB::table('operations')->insert(['name' => $name, 'completed_at' => now()]);
     DB::table('operation_checkpoints')->insert([
         'operation' => $name,
-        'name' => 'last_id',
+        'key' => 'last_id',
         'value' => '10',
     ]);
 
@@ -139,8 +139,8 @@ test('forgetting uses the configured operations connection', function () {
     $name = '2026_10_02_120000_example';
     DB::table('operations')->insert(['name' => $name, 'completed_at' => now()]);
     DB::connection('operations')->table('operations')->insert(['name' => $name, 'completed_at' => now()]);
-    DB::table('operation_checkpoints')->insert(['operation' => $name, 'name' => 'last_id', 'value' => '10']);
-    DB::connection('operations')->table('operation_checkpoints')->insert(['operation' => $name, 'name' => 'last_id', 'value' => '20']);
+    DB::table('operation_checkpoints')->insert(['operation' => $name, 'key' => 'last_id', 'value' => '10']);
+    DB::connection('operations')->table('operation_checkpoints')->insert(['operation' => $name, 'key' => 'last_id', 'value' => '20']);
 
     artisan('operations:forget', ['name' => $name, '--force' => true])->assertSuccessful();
 
@@ -159,9 +159,9 @@ test('forgetting clears checkpoints for completed and unfinished operations', fu
     }
 
     DB::table('operation_checkpoints')->insert([
-        ['operation' => $name, 'name' => 'last_id', 'value' => '10'],
-        ['operation' => $name, 'name' => 'finished', 'value' => 'true'],
-        ['operation' => $other, 'name' => 'last_id', 'value' => '20'],
+        ['operation' => $name, 'key' => 'last_id', 'value' => '10'],
+        ['operation' => $name, 'key' => 'finished', 'value' => 'true'],
+        ['operation' => $other, 'key' => 'last_id', 'value' => '20'],
     ]);
 
     app()->instance('observed', collect());
