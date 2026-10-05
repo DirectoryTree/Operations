@@ -44,7 +44,7 @@ Install the package with Composer:
 composer require directorytree/operations
 ```
 
-Publish and run the migrations:
+Publish and run the migration:
 
 ```bash
 php artisan vendor:publish --tag=operations-migrations
@@ -225,7 +225,14 @@ You can also forget records whose files have been removed, or clear checkpoints 
 
 ### Checkpoints
 
-Use `checkpoint()` inside an operation to save progress between attempts. Pass a key to read a value, an optional default for a missing key, or an array to persist values:
+Checkpoints are optional. Publish and run their migration only if you need to save progress between attempts:
+
+```bash
+php artisan vendor:publish --tag=operations-checkpoints-migration
+php artisan migrate
+```
+
+Add the `DirectoryTree\Operations\Concerns\HasCheckpoints` trait to an operation to use `checkpoint()`. Pass a key to read a value, an optional default for a missing key, or an array to persist values:
 
 ```php
 $cursor = $this->checkpoint('cursor');
@@ -245,12 +252,15 @@ For example, save the last processed ID to resume a backfill:
 
 ```php
 use App\Models\Company;
+use DirectoryTree\Operations\Concerns\HasCheckpoints;
 use DirectoryTree\Operations\Operation;
 use Illuminate\Console\Command;
 use Illuminate\Support\Collection;
 
 return new class extends Operation
 {
+    use HasCheckpoints;
+
     public function handle(Command $command): void
     {
         Company::query()
@@ -270,12 +280,7 @@ After a failure, `operations:run` starts `handle()` again. Your code reads the s
 
 In the example above, an interrupted chunk may run again. Write work that can safely repeat, or wrap each chunk's database changes and checkpoint write in a transaction on the same connection. Checkpoints use `operations.connection` and participate in its active transaction. With `WithinTransaction`, a failure rolls back all checkpoints written during that attempt along with the operation's database changes. External effects, such as API calls, are not rolled back.
 
-Existing installations must publish and run the new checkpoint migration before using checkpoints or `operations:forget`:
-
-```bash
-php artisan vendor:publish --tag=operations-checkpoints-migration
-php artisan migrate
-```
+The standard `operations-migrations` tag only publishes the operations table. Running, checking status, and forgetting operations work without the checkpoint table; `operations:forget` clears checkpoints when that table exists. Calling `checkpoint()` before installing its migration raises a database exception.
 
 ### Transactions
 

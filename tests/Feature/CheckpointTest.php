@@ -1,11 +1,88 @@
 <?php
 
+use Illuminate\Database\QueryException;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Schema;
 
 use function Pest\Laravel\artisan;
+
+test('standard commands work without the checkpoint table', function (bool $separateConnection) {
+    if ($separateConnection) {
+        config([
+            'database.connections.operations' => [
+                'driver' => 'sqlite',
+                'database' => ':memory:',
+                'prefix' => '',
+            ],
+            'operations.connection' => 'operations',
+        ]);
+
+        File::getRequire(__DIR__.'/../../database/migrations/2026_10_02_165413_create_operations_table.php')->up();
+    } else {
+        Schema::drop('operation_checkpoints');
+    }
+
+    $connection = DB::connection(config('operations.connection'));
+    $name = '2026_10_05_120000_example';
+
+    File::ensureDirectoryExists(config('operations.path'));
+    File::put(config('operations.path')."/{$name}.php", <<<'PHP'
+    <?php
+
+    return new class extends \DirectoryTree\Operations\Operation {
+        public function handle(\Illuminate\Console\Command $command): void
+        {
+            $command->info('Operation executed.');
+        }
+    };
+    PHP);
+
+    artisan('operations:run')->expectsOutputToContain('Operation executed.')->assertSuccessful();
+    artisan('operations:run')->expectsOutputToContain('No pending operations.')->assertSuccessful();
+
+    artisan('operations:status')->expectsTable(
+        ['Operation', 'Status', 'Completed at', 'File'],
+        [[$name, 'Completed', $connection->table('operations')->value('completed_at'), 'Present']],
+    )->assertSuccessful();
+
+    File::delete(config('operations.path')."/{$name}.php");
+
+    artisan('operations:forget', ['name' => $name, '--force' => true])->assertSuccessful();
+    artisan('operations:forget', ['name' => $name, '--force' => true])->assertFailed();
+
+    expect($connection->table('operations')->count())->toBe(0)
+        ->and($connection->getSchemaBuilder()->hasTable('operation_checkpoints'))->toBeFalse();
+
+    config(['operations.connection' => null]);
+})->with(['default connection' => false, 'separate connection' => true]);
+
+test('using checkpoints without their migration raises a database exception', function (string|array $argument) {
+    Schema::drop('operation_checkpoints');
+    app()->instance('checkpoint_argument', $argument);
+
+    File::ensureDirectoryExists(config('operations.path'));
+    File::put(config('operations.path').'/2026_10_05_120000_example.php', <<<'PHP'
+    <?php
+
+    return new class extends \DirectoryTree\Operations\Operation {
+        use \DirectoryTree\Operations\Concerns\HasCheckpoints;
+
+        public function handle(\Illuminate\Console\Command $command): void
+        {
+            $this->checkpoint(app('checkpoint_argument'));
+        }
+    };
+    PHP);
+
+    expect(fn () => artisan('operations:run')->run())->toThrow(QueryException::class, 'operation_checkpoints');
+
+    expect(DB::table('operations')->count())->toBe(0);
+})->with([
+    'read' => ['cursor'],
+    'write' => [['cursor' => 'next-page']],
+]);
 
 test('checkpoints read defaults and persist JSON values while preserving other keys', function () {
     $values = [
@@ -27,6 +104,8 @@ test('checkpoints read defaults and persist JSON values while preserving other k
     <?php
 
     return new class extends \DirectoryTree\Operations\Operation {
+        use \DirectoryTree\Operations\Concerns\HasCheckpoints;
+
         public function handle(\Illuminate\Console\Command $command): void
         {
             app('observed')->push($this->checkpoint('missing'));
@@ -64,6 +143,8 @@ test('a failed operation resumes from its saved checkpoint on the next run', fun
     <?php
 
     return new class extends \DirectoryTree\Operations\Operation {
+        use \DirectoryTree\Operations\Concerns\HasCheckpoints;
+
         public function handle(\Illuminate\Console\Command $command): void
         {
             for ($id = $this->checkpoint('last_id', 0) + 1; $id <= 3; $id++) {
@@ -104,6 +185,8 @@ test('checkpoint names are scoped to the operation filename', function () {
         <?php
 
         return new class extends \DirectoryTree\Operations\Operation {
+            use \DirectoryTree\Operations\Concerns\HasCheckpoints;
+
             public function handle(\Illuminate\Console\Command $command): void
             {
                 app('observed')->push($this->checkpoint('cursor'));
@@ -132,6 +215,8 @@ test('a failed chunk rolls back its work and checkpoint without losing earlier p
     <?php
 
     return new class extends \DirectoryTree\Operations\Operation {
+        use \DirectoryTree\Operations\Concerns\HasCheckpoints;
+
         public function handle(\Illuminate\Console\Command $command): void
         {
             foreach ([1, 2] as $id) {
@@ -169,6 +254,8 @@ test('checkpoints participate in the whole operation transaction', function () {
     <?php
 
     return new class extends \DirectoryTree\Operations\Operation implements \DirectoryTree\Operations\Contracts\WithinTransaction {
+        use \DirectoryTree\Operations\Concerns\HasCheckpoints;
+
         public function handle(\Illuminate\Console\Command $command): void
         {
             $this->checkpoint(['last_id' => 20, 'finished' => true]);
@@ -191,6 +278,8 @@ test('invalid JSON values fail before any checkpoints are changed', function () 
     <?php
 
     return new class extends \DirectoryTree\Operations\Operation {
+        use \DirectoryTree\Operations\Concerns\HasCheckpoints;
+
         public function handle(\Illuminate\Console\Command $command): void
         {
             $this->checkpoint(['last_id' => 10]);
@@ -234,6 +323,8 @@ test('checkpoints use the configured connection and read from its writer', funct
     <?php
 
     return new class extends \DirectoryTree\Operations\Operation {
+        use \DirectoryTree\Operations\Concerns\HasCheckpoints;
+
         public function handle(\Illuminate\Console\Command $command): void
         {
             app('observed')->push($this->checkpoint('cursor', 'initial'));

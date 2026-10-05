@@ -45,7 +45,7 @@ class OperationsServiceProvider extends ServiceProvider
 
             $this->publishesMigrations([
                 __DIR__.'/../database/migrations/2026_10_05_041651_create_operation_checkpoints_table.php' => database_path('migrations/2026_10_05_041651_create_operation_checkpoints_table.php'),
-            ], ['operations-migrations', 'operations-checkpoints-migration']);
+            ], 'operations-checkpoints-migration');
         }
     }
 }

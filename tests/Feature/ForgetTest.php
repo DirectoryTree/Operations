@@ -171,6 +171,8 @@ test('forgetting clears checkpoints for completed and unfinished operations', fu
     <?php
 
     return new class extends \DirectoryTree\Operations\Operation {
+        use \DirectoryTree\Operations\Concerns\HasCheckpoints;
+
         public function handle(\Illuminate\Console\Command $command): void
         {
             app('observed')->push($this->checkpoint('last_id', 0));

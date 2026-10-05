@@ -2,6 +2,7 @@
 
 namespace DirectoryTree\Operations;
 
+use DirectoryTree\Operations\Concerns\HasCheckpoints;
 use DirectoryTree\Operations\Contracts\WithinTransaction;
 use Illuminate\Console\Command;
 use Illuminate\Database\ConnectionInterface;
@@ -73,9 +74,11 @@ class OperationRepository
                 ->where('name', $name)
                 ->delete();
 
-            $deleted += $this->connection->table('operation_checkpoints')
-                ->where('operation', $name)
-                ->delete();
+            if ($this->connection->getSchemaBuilder()->hasTable('operation_checkpoints')) {
+                $deleted += $this->connection->table('operation_checkpoints')
+                    ->where('operation', $name)
+                    ->delete();
+            }
 
             return $deleted > 0;
         });
@@ -86,7 +89,9 @@ class OperationRepository
      */
     public function run(string $name, Operation $operation, Command $command): void
     {
-        $operation->setContext($name, $this);
+        if (in_array(HasCheckpoints::class, class_uses_recursive($operation))) {
+            $operation->setCheckpointContext($name, $this);
+        }
 
         $run = function () use ($name, $operation, $command) {
             $operation->handle($command);
