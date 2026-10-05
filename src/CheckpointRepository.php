@@ -11,7 +11,7 @@ class CheckpointRepository
      */
     public function __construct(
         protected ConnectionInterface $connection,
-        protected string $name
+        protected string $operation
     ) {}
 
     /**
@@ -21,7 +21,7 @@ class CheckpointRepository
     {
         $value = $this->connection->table('operation_checkpoints')
             ->useWritePdo()
-            ->where('operation', $this->name)
+            ->where('operation', $this->operation)
             ->where('name', $key)
             ->value('value');
 
@@ -41,7 +41,7 @@ class CheckpointRepository
 
         foreach ($values as $key => $value) {
             $checkpoints[] = [
-                'operation' => $this->name,
+                'operation' => $this->operation,
                 'name' => $key,
                 'value' => json_encode($value, JSON_THROW_ON_ERROR),
             ];
@@ -57,7 +57,7 @@ class CheckpointRepository
     public function forget(): bool
     {
         return $this->connection->table('operation_checkpoints')
-            ->where('operation', $this->name)
+            ->where('operation', $this->operation)
             ->delete() > 0;
     }
 }
