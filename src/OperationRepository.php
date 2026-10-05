@@ -29,13 +29,56 @@ class OperationRepository
     }
 
     /**
-     * Delete the completion record for the given operation.
+     * Get a checkpoint from the writer connection.
+     */
+    public function getCheckpoint(string $operation, string $name, mixed $default = null): mixed
+    {
+        $value = $this->connection->table('operation_checkpoints')
+            ->useWritePdo()
+            ->where('operation', $operation)
+            ->where('name', $name)
+            ->value('value');
+
+        return $value === null ? value($default) : json_decode($value, true, flags: JSON_THROW_ON_ERROR);
+    }
+
+    /**
+     * Persist checkpoint values without replacing other keys.
+     *
+     * @param  array<string, mixed>  $values
+     */
+    public function saveCheckpoints(string $operation, array $values): void
+    {
+        $checkpoints = [];
+
+        foreach ($values as $name => $value) {
+            $checkpoints[] = [
+                'operation' => $operation,
+                'name' => $name,
+                'value' => json_encode($value, JSON_THROW_ON_ERROR),
+            ];
+        }
+
+        $this->connection->table('operation_checkpoints')
+            ->upsert($checkpoints, ['operation', 'name'], ['value']);
+    }
+
+    /**
+     * Delete the completion record and checkpoints for the given operation.
      */
     public function forget(string $name): bool
     {
-        return $this->connection->table('operations')
-            ->where('name', $name)
-            ->delete() > 0;
+        return $this->connection->transaction(function () use ($name) {
+            $deleted = $this->connection->table('operations')
+                ->where('name', $name)
+                ->delete();
+
+            $deleted += $this->connection->table('operation_checkpoints')
+                ->where('operation', $name)
+                ->delete();
+
+            return $deleted > 0;
+        });
     }
 
     /**
@@ -43,6 +86,8 @@ class OperationRepository
      */
     public function run(string $name, Operation $operation, Command $command): void
     {
+        $operation->setContext($name, $this);
+
         $run = function () use ($name, $operation, $command) {
             $operation->handle($command);
 

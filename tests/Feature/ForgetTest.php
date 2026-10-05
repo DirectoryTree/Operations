@@ -69,13 +69,19 @@ test('declining confirmation leaves the completion record intact in every enviro
     app()->instance('env', $environment);
     $name = '2026_10_02_120000_example';
     DB::table('operations')->insert(['name' => $name, 'completed_at' => now()]);
+    DB::table('operation_checkpoints')->insert([
+        'operation' => $name,
+        'name' => 'last_id',
+        'value' => '10',
+    ]);
 
     artisan('operations:forget', ['name' => $name])
         ->expectsConfirmation("Forget operation [{$name}]?", 'no')
         ->expectsOutputToContain('Command cancelled.')
         ->assertFailed();
 
-    expect(DB::table('operations')->pluck('name')->all())->toBe([$name]);
+    expect(DB::table('operations')->pluck('name')->all())->toBe([$name])
+        ->and(DB::table('operation_checkpoints')->pluck('operation')->all())->toBe([$name]);
 
     app()->instance('env', 'testing');
 })->with(['testing', 'production']);
@@ -106,11 +112,11 @@ test('force bypasses confirmation in production and can forget a pruned operatio
     app()->instance('env', 'testing');
 });
 
-test('forgetting fails when the exact completion record does not exist', function (string $name) {
+test('forgetting fails when no completion record or checkpoints exist for the exact name', function (string $name) {
     DB::table('operations')->insert(['name' => '2026_10_02_120000_example', 'completed_at' => now()]);
 
     artisan('operations:forget', ['name' => $name, '--force' => true])
-        ->expectsOutputToContain("No completion record found for operation [{$name}].")
+        ->expectsOutputToContain("No completion record or checkpoints found for operation [{$name}].")
         ->assertFailed();
 
     expect(DB::table('operations')->pluck('name')->all())->toBe(['2026_10_02_120000_example']);
@@ -126,15 +132,58 @@ test('forgetting uses the configured operations connection', function () {
         'operations.connection' => 'operations',
     ]);
 
-    $migration = File::getRequire(__DIR__.'/../../database/migrations/2026_10_02_165413_create_operations_table.php');
-    $migration->up();
+    foreach (File::glob(__DIR__.'/../../database/migrations/*.php') as $path) {
+        File::getRequire($path)->up();
+    }
 
     $name = '2026_10_02_120000_example';
     DB::table('operations')->insert(['name' => $name, 'completed_at' => now()]);
     DB::connection('operations')->table('operations')->insert(['name' => $name, 'completed_at' => now()]);
+    DB::table('operation_checkpoints')->insert(['operation' => $name, 'name' => 'last_id', 'value' => '10']);
+    DB::connection('operations')->table('operation_checkpoints')->insert(['operation' => $name, 'name' => 'last_id', 'value' => '20']);
 
     artisan('operations:forget', ['name' => $name, '--force' => true])->assertSuccessful();
 
     expect(DB::connection('operations')->table('operations')->count())->toBe(0)
-        ->and(DB::table('operations')->pluck('name')->all())->toBe([$name]);
+        ->and(DB::connection('operations')->table('operation_checkpoints')->count())->toBe(0)
+        ->and(DB::table('operations')->pluck('name')->all())->toBe([$name])
+        ->and(DB::table('operation_checkpoints')->pluck('operation')->all())->toBe([$name]);
 });
+
+test('forgetting clears checkpoints for completed and unfinished operations', function (bool $completed) {
+    $name = '2026_10_05_120000_example';
+    $other = '2026_10_05_120001_other';
+
+    if ($completed) {
+        DB::table('operations')->insert(['name' => $name, 'completed_at' => now()]);
+    }
+
+    DB::table('operation_checkpoints')->insert([
+        ['operation' => $name, 'name' => 'last_id', 'value' => '10'],
+        ['operation' => $name, 'name' => 'finished', 'value' => 'true'],
+        ['operation' => $other, 'name' => 'last_id', 'value' => '20'],
+    ]);
+
+    app()->instance('observed', collect());
+
+    File::ensureDirectoryExists(config('operations.path'));
+    File::put(config('operations.path')."/{$name}.php", <<<'PHP'
+    <?php
+
+    return new class extends \DirectoryTree\Operations\Operation {
+        public function handle(\Illuminate\Console\Command $command): void
+        {
+            app('observed')->push($this->checkpoint('last_id', 0));
+        }
+    };
+    PHP);
+
+    artisan('operations:forget', ['name' => $name, '--force' => true])->assertSuccessful();
+
+    expect(DB::table('operations')->count())->toBe(0)
+        ->and(DB::table('operation_checkpoints')->pluck('operation')->all())->toBe([$other]);
+
+    artisan('operations:run', ['operation' => $name])->assertSuccessful();
+
+    expect(app('observed')->all())->toBe([0]);
+})->with(['completed' => true, 'unfinished' => false]);
