@@ -14,7 +14,7 @@ trait HasCheckpoints
     /**
      * The repository storing the operation's checkpoints.
      */
-    protected CheckpointRepository $checkpointRepository;
+    protected CheckpointRepository $checkpoints;
 
     /**
      * Read a checkpoint or persist an array of checkpoint values.
@@ -24,12 +24,12 @@ trait HasCheckpoints
     public function checkpoint(string|array $key, mixed $default = null): mixed
     {
         if (is_array($key)) {
-            $this->checkpointRepository->save($this->operationName, $key);
+            $this->checkpoints->save($this->operationName, $key);
 
             return null;
         }
 
-        return $this->checkpointRepository->get($this->operationName, $key, $default);
+        return $this->checkpoints->get($this->operationName, $key, $default);
     }
 
     /**
@@ -38,7 +38,7 @@ trait HasCheckpoints
     public function setCheckpointContext(string $name, CheckpointRepository $repository): static
     {
         $this->operationName = $name;
-        $this->checkpointRepository = $repository;
+        $this->checkpoints = $repository;
 
         return $this;
     }
