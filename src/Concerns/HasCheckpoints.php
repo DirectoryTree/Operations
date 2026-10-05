@@ -9,7 +9,7 @@ trait HasCheckpoints
     /**
      * The operation's filename without the extension.
      */
-    protected string $operationName;
+    protected string $name;
 
     /**
      * The repository storing the operation's checkpoints.
@@ -24,12 +24,12 @@ trait HasCheckpoints
     public function checkpoint(string|array $key, mixed $default = null): mixed
     {
         if (is_array($key)) {
-            $this->checkpoints->save($this->operationName, $key);
+            $this->checkpoints->save($this->name, $key);
 
             return null;
         }
 
-        return $this->checkpoints->get($this->operationName, $key, $default);
+        return $this->checkpoints->get($this->name, $key, $default);
     }
 
     /**
@@ -37,7 +37,7 @@ trait HasCheckpoints
      */
     public function setCheckpointContext(string $name, CheckpointRepository $repository): static
     {
-        $this->operationName = $name;
+        $this->name = $name;
         $this->checkpoints = $repository;
 
         return $this;
