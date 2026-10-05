@@ -273,7 +273,7 @@ In the example above, an interrupted chunk may run again. Write work that can sa
 Existing installations must publish and run the new checkpoint migration before using checkpoints or `operations:forget`:
 
 ```bash
-php artisan vendor:publish --tag=operations-migrations
+php artisan vendor:publish --tag=operations-checkpoints-migration
 php artisan migrate
 ```
 

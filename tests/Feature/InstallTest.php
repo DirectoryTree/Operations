@@ -21,3 +21,14 @@ test('the package configuration can be published', function () {
 
     expect(File::get(config_path('operations.php')))->toBe(File::get(__DIR__.'/../../config/operations.php'));
 });
+
+test('existing installations can publish only the checkpoint migration', function () {
+    File::ensureDirectoryExists(database_path('migrations'));
+    $original = database_path('migrations/2026_10_02_120000_create_operations_table.php');
+    File::copy(__DIR__.'/../../database/migrations/2026_10_02_165413_create_operations_table.php', $original);
+
+    artisan('vendor:publish', ['--tag' => 'operations-checkpoints-migration'])->assertSuccessful();
+
+    expect(File::glob(database_path('migrations/*_create_operations_table.php')))->toBe([$original])
+        ->and(File::glob(database_path('migrations/*_create_operation_checkpoints_table.php')))->toHaveCount(1);
+});
