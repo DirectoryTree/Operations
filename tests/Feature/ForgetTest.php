@@ -175,7 +175,7 @@ test('forgetting clears checkpoints for completed and unfinished operations', fu
 
         public function handle(\Illuminate\Console\Command $command): void
         {
-            app('observed')->push($this->checkpoint('last_id', 0));
+            app('observed')->push($this->checkpoints->get('last_id', 0));
         }
     };
     PHP);

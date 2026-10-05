@@ -58,9 +58,9 @@ test('standard commands work without the checkpoint table', function (bool $sepa
     config(['operations.connection' => null]);
 })->with(['default connection' => false, 'separate connection' => true]);
 
-test('using checkpoints without their migration raises a database exception', function (string|array $argument) {
+test('using checkpoints without their migration raises a database exception', function (string $method) {
     Schema::drop('operation_checkpoints');
-    app()->instance('checkpoint_argument', $argument);
+    app()->instance('checkpoint_method', $method);
 
     File::ensureDirectoryExists(config('operations.path'));
     File::put(config('operations.path').'/2026_10_05_120000_example.php', <<<'PHP'
@@ -71,7 +71,7 @@ test('using checkpoints without their migration raises a database exception', fu
 
         public function handle(\Illuminate\Console\Command $command): void
         {
-            $this->checkpoint(app('checkpoint_argument'));
+            $this->checkpoints->{app('checkpoint_method')}('cursor', 'next-page');
         }
     };
     PHP);
@@ -80,11 +80,11 @@ test('using checkpoints without their migration raises a database exception', fu
 
     expect(DB::table('operations')->count())->toBe(0);
 })->with([
-    'read' => ['cursor'],
-    'write' => [['cursor' => 'next-page']],
+    'read' => 'get',
+    'write' => 'put',
 ]);
 
-test('checkpoints read defaults and persist JSON values while preserving other keys', function () {
+test('checkpoints read defaults and persist JSON values while preserving other keys', function (bool $multiple) {
     $values = [
         'cursor' => 'next-page',
         'count' => 0,
@@ -97,6 +97,7 @@ test('checkpoints read defaults and persist JSON values while preserving other k
     ];
 
     app()->instance('checkpoint_values', $values);
+    app()->instance('multiple', $multiple);
     app()->instance('observed', collect());
 
     File::ensureDirectoryExists(config('operations.path'));
@@ -108,15 +109,22 @@ test('checkpoints read defaults and persist JSON values while preserving other k
 
         public function handle(\Illuminate\Console\Command $command): void
         {
-            app('observed')->push($this->checkpoint('missing'));
-            app('observed')->push($this->checkpoint('missing', 42));
+            app('observed')->push($this->checkpoints->get('missing'));
+            app('observed')->push($this->checkpoints->get('missing', 42));
 
-            $this->checkpoint(app('checkpoint_values'));
-            $this->checkpoint(['cursor' => 'last-page']);
-            $this->checkpoint([]);
+            if (app('multiple')) {
+                $this->checkpoints->put(app('checkpoint_values'));
+            } else {
+                foreach (app('checkpoint_values') as $key => $value) {
+                    $this->checkpoints->put($key, $value);
+                }
+            }
+
+            $this->checkpoints->put('cursor', 'last-page');
+            $this->checkpoints->put([]);
 
             foreach (app('checkpoint_values') as $key => $value) {
-                app('observed')->push($this->checkpoint($key, 'missing'));
+                app('observed')->push($this->checkpoints->get($key, 'missing'));
             }
         }
     };
@@ -129,7 +137,7 @@ test('checkpoints read defaults and persist JSON values while preserving other k
     expect(app('observed')->all())->toBe([null, 42, ...array_values($values)])
         ->and(DB::table('operation_checkpoints')->count())->toBe(count($values))
         ->and(DB::table('operation_checkpoints')->where('name', 'missing')->exists())->toBeFalse();
-});
+})->with(['multiple values' => true, 'single values' => false]);
 
 test('a failed operation resumes from its saved checkpoint on the next run', function () {
     Schema::create('examples', function (Blueprint $table) {
@@ -147,13 +155,13 @@ test('a failed operation resumes from its saved checkpoint on the next run', fun
 
         public function handle(\Illuminate\Console\Command $command): void
         {
-            for ($id = $this->checkpoint('last_id', 0) + 1; $id <= 3; $id++) {
+            for ($id = $this->checkpoints->get('last_id', 0) + 1; $id <= 3; $id++) {
                 if ($id === 3 && app('should_fail')) {
                     throw new \RuntimeException('Backfill interrupted.');
                 }
 
                 \Illuminate\Support\Facades\DB::table('examples')->insert(['id' => $id]);
-                $this->checkpoint(['last_id' => $id]);
+                $this->checkpoints->put('last_id', $id);
             }
         }
     };
@@ -189,9 +197,9 @@ test('checkpoint names are scoped to the operation filename', function () {
 
             public function handle(\Illuminate\Console\Command $command): void
             {
-                app('observed')->push($this->checkpoint('cursor'));
-                $this->checkpoint(['cursor' => basename(__FILE__, '.php')]);
-                app('observed')->push($this->checkpoint('cursor'));
+                app('observed')->push($this->checkpoints->get('cursor'));
+                $this->checkpoints->put('cursor', basename(__FILE__, '.php'));
+                app('observed')->push($this->checkpoints->get('cursor'));
             }
         };
         PHP);
@@ -222,7 +230,7 @@ test('a failed chunk rolls back its work and checkpoint without losing earlier p
             foreach ([1, 2] as $id) {
                 \Illuminate\Support\Facades\DB::transaction(function () use ($id) {
                     \Illuminate\Support\Facades\DB::table('examples')->insert(['id' => $id]);
-                    $this->checkpoint(['last_id' => $id]);
+                    $this->checkpoints->put('last_id', $id);
 
                     if ($id === 2) {
                         throw new \RuntimeException('Chunk failed.');
@@ -258,7 +266,7 @@ test('checkpoints participate in the whole operation transaction', function () {
 
         public function handle(\Illuminate\Console\Command $command): void
         {
-            $this->checkpoint(['last_id' => 20, 'finished' => true]);
+            $this->checkpoints->put(['last_id' => 20, 'finished' => true]);
 
             throw new \RuntimeException('Backfill failed.');
         }
@@ -282,8 +290,8 @@ test('invalid JSON values fail before any checkpoints are changed', function () 
 
         public function handle(\Illuminate\Console\Command $command): void
         {
-            $this->checkpoint(['last_id' => 10]);
-            $this->checkpoint(['last_id' => 20, 'invalid' => NAN]);
+            $this->checkpoints->put('last_id', 10);
+            $this->checkpoints->put(['last_id' => 20, 'invalid' => NAN]);
         }
     };
     PHP);
@@ -327,9 +335,9 @@ test('checkpoints use the configured connection and read from its writer', funct
 
         public function handle(\Illuminate\Console\Command $command): void
         {
-            app('observed')->push($this->checkpoint('cursor', 'initial'));
-            $this->checkpoint(['cursor' => 'next-page']);
-            app('observed')->push($this->checkpoint('cursor'));
+            app('observed')->push($this->checkpoints->get('cursor', 'initial'));
+            $this->checkpoints->put('cursor', 'next-page');
+            app('observed')->push($this->checkpoints->get('cursor'));
         }
     };
     PHP);

@@ -31,10 +31,12 @@ class CheckpointRepository
     /**
      * Persist checkpoint values without replacing other keys.
      *
-     * @param  array<string, mixed>  $values
+     * @param  string|array<string, mixed>  $key
      */
-    public function save(array $values): void
+    public function put(string|array $key, mixed $value = null): void
     {
+        $values = is_array($key) ? $key : [$key => $value];
+
         $checkpoints = [];
 
         foreach ($values as $key => $value) {

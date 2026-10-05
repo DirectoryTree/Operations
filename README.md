@@ -232,15 +232,15 @@ php artisan vendor:publish --tag=operations-checkpoints-migration
 php artisan migrate
 ```
 
-Add the `DirectoryTree\Operations\Concerns\HasCheckpoints` trait to an operation to use `checkpoint()`. Pass a key to read a value, an optional default for a missing key, or an array to persist values:
+Add the `DirectoryTree\Operations\Concerns\HasCheckpoints` trait to access the operation's checkpoint repository. Use `get()` to read a value with an optional default, and `put()` to save a value or an array of values:
 
 ```php
-$cursor = $this->checkpoint('cursor');
-$lastId = $this->checkpoint('last_id', 0);
+$cursor = $this->checkpoints->get('cursor');
+$lastId = $this->checkpoints->get('last_id', 0);
 
-$this->checkpoint(['last_id' => 15000]);
+$this->checkpoints->put('last_id', 15000);
 
-$this->checkpoint([
+$this->checkpoints->put([
     'cursor' => $nextCursor,
     'processed' => $processed,
 ]);
@@ -264,23 +264,23 @@ return new class extends Operation
     public function handle(Command $command): void
     {
         Company::query()
-            ->where('id', '>', $this->checkpoint('last_id', 0))
+            ->where('id', '>', $this->checkpoints->get('last_id', 0))
             ->chunkById(1000, function (Collection $companies) {
                 foreach ($companies as $company) {
                     $company->update(['display_name' => $company->name]);
                 }
 
-                $this->checkpoint(['last_id' => $companies->last()->id]);
+                $this->checkpoints->put('last_id', $companies->last()->id);
             });
     }
 };
 ```
 
-After a failure, `operations:run` starts `handle()` again. Your code reads the saved checkpoint to decide where to continue. Saving a checkpoint does not mark the operation complete or prevent concurrent execution. Checkpoints remain after completion until the operation is forgotten.
+After a failure, `operations:run` starts `handle()` again. Your code reads the saved checkpoint to decide where to continue. Saving a checkpoint does not mark the operation complete or prevent concurrent execution. Checkpoints remain after completion until the operation is forgotten. You can also call `$this->checkpoints->forget()` to clear all of the operation's checkpoints without changing its completion record.
 
 In the example above, an interrupted chunk may run again. Write work that can safely repeat, or wrap each chunk's database changes and checkpoint write in a transaction on the same connection. Checkpoints use `operations.connection` and participate in its active transaction. With `WithinTransaction`, a failure rolls back all checkpoints written during that attempt along with the operation's database changes. External effects, such as API calls, are not rolled back.
 
-The standard `operations-migrations` tag only publishes the operations table. Running, checking status, and forgetting operations work without the checkpoint table; `operations:forget` clears checkpoints when that table exists. Calling `checkpoint()` before installing its migration raises a database exception.
+The standard `operations-migrations` tag only publishes the operations table. Running, checking status, and forgetting operations work without the checkpoint table; `operations:forget` clears checkpoints when that table exists. Reading or writing checkpoints before installing their migration raises a database exception.
 
 ### Transactions
 
