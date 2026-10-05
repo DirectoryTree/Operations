@@ -7,11 +7,6 @@ use DirectoryTree\Operations\CheckpointRepository;
 trait HasCheckpoints
 {
     /**
-     * The operation's filename without the extension.
-     */
-    protected string $name;
-
-    /**
      * The repository storing the operation's checkpoints.
      */
     protected CheckpointRepository $checkpoints;
@@ -24,21 +19,20 @@ trait HasCheckpoints
     public function checkpoint(string|array $key, mixed $default = null): mixed
     {
         if (is_array($key)) {
-            $this->checkpoints->save($this->name, $key);
+            $this->checkpoints->save($key);
 
             return null;
         }
 
-        return $this->checkpoints->get($this->name, $key, $default);
+        return $this->checkpoints->get($key, $default);
     }
 
     /**
-     * Set the operation's checkpoint context.
+     * Set the operation's checkpoint repository.
      */
-    public function setCheckpointContext(string $name, CheckpointRepository $repository): static
+    public function setCheckpoints(CheckpointRepository $checkpoints): static
     {
-        $this->name = $name;
-        $this->checkpoints = $repository;
+        $this->checkpoints = $checkpoints;
 
         return $this;
     }

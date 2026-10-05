@@ -10,18 +10,19 @@ class CheckpointRepository
      * Create a new checkpoint repository.
      */
     public function __construct(
-        protected ConnectionInterface $connection
+        protected ConnectionInterface $connection,
+        protected string $name
     ) {}
 
     /**
      * Get a checkpoint from the writer connection.
      */
-    public function get(string $operation, string $name, mixed $default = null): mixed
+    public function get(string $key, mixed $default = null): mixed
     {
         $value = $this->connection->table('operation_checkpoints')
             ->useWritePdo()
-            ->where('operation', $operation)
-            ->where('name', $name)
+            ->where('operation', $this->name)
+            ->where('name', $key)
             ->value('value');
 
         return $value === null ? value($default) : json_decode($value, true, flags: JSON_THROW_ON_ERROR);
@@ -32,14 +33,14 @@ class CheckpointRepository
      *
      * @param  array<string, mixed>  $values
      */
-    public function save(string $operation, array $values): void
+    public function save(array $values): void
     {
         $checkpoints = [];
 
-        foreach ($values as $name => $value) {
+        foreach ($values as $key => $value) {
             $checkpoints[] = [
-                'operation' => $operation,
-                'name' => $name,
+                'operation' => $this->name,
+                'name' => $key,
                 'value' => json_encode($value, JSON_THROW_ON_ERROR),
             ];
         }
@@ -51,14 +52,14 @@ class CheckpointRepository
     /**
      * Delete an operation's checkpoints when checkpoint storage is installed.
      */
-    public function forget(string $operation): bool
+    public function forget(): bool
     {
         if (! $this->connection->getSchemaBuilder()->hasTable('operation_checkpoints')) {
             return false;
         }
 
         return $this->connection->table('operation_checkpoints')
-            ->where('operation', $operation)
+            ->where('operation', $this->name)
             ->delete() > 0;
     }
 }
