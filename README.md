@@ -3,20 +3,20 @@
 <p align="center">Run one-time deployment operations in Laravel.</p>
 
 <p align="center">
-<a href="https://github.com/DirectoryTree/Operations/actions"><img src="https://img.shields.io/github/actions/workflow/status/DirectoryTree/Operations/tests.yml?branch=master&style=flat-square" alt="Tests"></a>
-<a href="https://packagist.org/packages/directorytree/operations"><img src="https://img.shields.io/packagist/dt/directorytree/operations.svg?style=flat-square" alt="Total Downloads"></a>
-<a href="https://packagist.org/packages/directorytree/operations"><img src="https://img.shields.io/packagist/v/directorytree/operations.svg?style=flat-square" alt="Latest Version"></a>
-<a href="https://github.com/DirectoryTree/Operations/blob/master/LICENSE.md"><img src="https://img.shields.io/github/license/DirectoryTree/Operations?style=flat-square" alt="License"></a>
+    <a href="https://github.com/DirectoryTree/Operations/actions/workflows/tests.yml"><img src="https://img.shields.io/github/actions/workflow/status/DirectoryTree/Operations/tests.yml?branch=master&amp;style=flat-square" alt="Tests"></a>
+    <a href="https://packagist.org/packages/directorytree/operations"><img src="https://img.shields.io/packagist/dt/directorytree/operations.svg?style=flat-square" alt="Total Downloads"></a>
+    <a href="https://packagist.org/packages/directorytree/operations"><img src="https://img.shields.io/packagist/v/directorytree/operations.svg?style=flat-square" alt="Latest Version"></a>
+    <a href="https://github.com/DirectoryTree/Operations/blob/master/LICENSE.md"><img src="https://img.shields.io/github/license/DirectoryTree/Operations?style=flat-square" alt="License"></a>
 </p>
 
 <p align="center">
-  <a href="#installation">Installation</a>
-  <span> · </span>
-  <a href="#usage">Usage</a>
-  <span> · </span>
-  <a href="#deployment">Deployment</a>
-  <span> · </span>
-  <a href="#configuration">Configuration</a>
+    <a href="#installation">Installation</a>
+    <span> · </span>
+    <a href="#usage">Usage</a>
+    <span> · </span>
+    <a href="#deployment">Deployment</a>
+    <span> · </span>
+    <a href="#configuration">Configuration</a>
 </p>
 
 ---
